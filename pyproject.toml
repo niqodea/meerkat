@@ -1,0 +1,37 @@
+[tool.poetry]
+name = "meerkat"
+version = "0.1.0"
+description = "Monitor things and react to changes swiftly"
+authors = ["Nicola De Angeli <112023843+niqodea@users.noreply.github.com>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+
+dataclass-wizard = "^0.23"
+
+[tool.poetry.group.dev.dependencies]
+mypy = "^1.11"
+ruff = "^0.6"
+
+pytest = "^8.3.3"
+pytest-asyncio = "^0.24.0"
+
+[tool.ruff.lint]
+select = [
+  "B",  # flake8-bugbear
+  "E",  # pycodestyle
+  "F",  # Pyflakes
+  "I",  # isort
+  "SIM",  # flake8-simplify
+  "UP",  # pyupgrade
+]
+
+# Ignore unused imports in __init__.py files (would need __all__ otherwise)
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
