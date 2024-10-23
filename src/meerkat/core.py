@@ -3,8 +3,9 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
-from typing import ClassVar, Generic, Protocol, TypeAlias, TypeVar
+from typing import Callable, ClassVar, Generic, Protocol, TypeAlias, TypeVar
 
 from dataclass_wizard import JSONWizard  # type: ignore[import-untyped]
 
@@ -92,6 +93,43 @@ class BaseTruthSourceErrorHandler(TruthSourceErrorHandler[BaseTruthSourceError])
 
     async def run(self, error: BaseTruthSourceError) -> None:
         print(f"Error: {error.message}")
+
+
+class BaseActionExecutor(ActionExecutor[T]):
+    def __init__(
+        self,
+        name: str,
+        stringifier: Callable[[T], str],
+    ) -> None:
+        self._name = name
+        self._stringifier = stringifier
+
+    async def run(self, operations: dict[Thing.Id, Operation[T]]) -> None:
+        print(f"Changes for {self._name} [{datetime.now().replace(microsecond=0)}]")
+
+        create_operations: dict[Thing.Id, CreateOperation] = {
+            k: v for k, v in operations.items() if isinstance(v, CreateOperation)
+        }
+        delete_operations: dict[Thing.Id, DeleteOperation] = {
+            k: v for k, v in operations.items() if isinstance(v, DeleteOperation)
+        }
+        update_operations: dict[Thing.Id, UpdateOperation] = {
+            k: v for k, v in operations.items() if isinstance(v, UpdateOperation)
+        }
+
+        if len(create_operations) > 0:
+            print("* Created:")
+            for create_operation in create_operations.values():
+                print(f"  * {self._stringifier(create_operation.item)}")
+        if len(delete_operations) > 0:
+            print("* Deleted:")
+            for delete_operation in delete_operations.values():
+                print(f"  * {self._stringifier(delete_operation.item)}")
+        if len(update_operations) > 0:
+            print("* Updated:")
+            for update_operation in update_operations.values():
+                print(f"  * from: {self._stringifier(update_operation.before)}")
+                print(f"    to:   {self._stringifier(update_operation.after)}")
 
 
 class BaseSnapshotManager(Generic[T]):
@@ -189,8 +227,9 @@ class Meerkat(Generic[T, TSE_covariant]):
 
     @staticmethod
     def create(
+        name: str,
         truth_source_fetcher: TruthSourceFetcher[T, BaseTruthSourceError],
-        action_executor: ActionExecutor[T],
+        stringifier: Callable[[T], str],
         snapshot_path: Path,
         interval_seconds: int,
     ) -> Meerkat[T, BaseTruthSourceError]:
@@ -202,7 +241,10 @@ class Meerkat(Generic[T, TSE_covariant]):
                 path=snapshot_path,
                 thing_ids={p.stem for p in snapshot_path.glob("*.json")},
             ),
-            action_executor=action_executor,
+            action_executor=BaseActionExecutor(
+                name=name,
+                stringifier=stringifier,
+            ),
             interval_manager=BaseIntervalManager(
                 interval_seconds=interval_seconds,
             ),
