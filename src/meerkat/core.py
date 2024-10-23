@@ -166,6 +166,28 @@ class BaseSnapshotManager(SnapshotManager[T]):
 
     PATH_MARKER = ".snapshot"
 
+    @staticmethod
+    def create(
+        class_: type[T],
+        path: Path,
+    ) -> BaseSnapshotManager[T]:
+        if not path.is_dir():
+            raise ValueError(f"Could not find directory: {path}")
+
+        marker_path = path / BaseSnapshotManager.PATH_MARKER
+
+        if not marker_path.exists() and any(path.iterdir()):
+            raise ValueError(f"Uninitialized snapshot directory is not empty: {path}")
+
+        marker_path.touch()
+        ids = {p.stem for p in path.glob("*.json")}
+
+        return BaseSnapshotManager(
+            class_=class_,
+            path=path,
+            ids=ids,
+        )
+
 
 class BaseIntervalManager(IntervalManager):
     def __init__(self, interval_seconds: int) -> None:
@@ -236,10 +258,9 @@ class Meerkat(Generic[T, TSE_covariant]):
         return Meerkat(
             truth_source_fetcher=truth_source_fetcher,
             truth_source_error_handler=BaseTruthSourceErrorHandler(),
-            snapshot_manager=BaseSnapshotManager(
+            snapshot_manager=BaseSnapshotManager.create(
                 class_=truth_source_fetcher.get_class(),
                 path=snapshot_path,
-                ids={p.stem for p in snapshot_path.glob("*.json")},
             ),
             action_executor=BaseActionExecutor(
                 name=name,
