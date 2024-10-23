@@ -132,7 +132,7 @@ class BaseActionExecutor(ActionExecutor[T]):
                 print(f"    to:   {self._stringifier(update_operation.after)}")
 
 
-class BaseSnapshotManager(Generic[T]):
+class BaseSnapshotManager(SnapshotManager[T]):
     def __init__(
         self,
         thing_class: type[T],
