@@ -135,34 +135,34 @@ class BaseActionExecutor(ActionExecutor[T]):
 class BaseSnapshotManager(SnapshotManager[T]):
     def __init__(
         self,
-        thing_class: type[T],
+        class_: type[T],
         path: Path,
-        thing_ids: set[Thing.Id],
+        ids: set[Thing.Id],
     ) -> None:
-        self._thing_class = thing_class
+        self._class = class_
         self._path = path
-        self._thing_ids = thing_ids
+        self._ids = ids
 
     def get(self) -> dict[Thing.Id, T]:
         snapshot = {}
-        for thing_id in self._thing_ids:
-            thing_path = self._path / f"{thing_id}.json"
-            thing_dict = json.loads(thing_path.read_text())
-            thing = self._thing_class.from_dict(thing_dict)
-            snapshot[thing_id] = thing
+        for id_ in self._ids:
+            path = self._path / f"{id_}.json"
+            dict_ = json.loads(path.read_text())
+            object_ = self._class.from_dict(dict_)
+            snapshot[id_] = object_
         return snapshot
 
     def overwrite(self, snapshot: dict[Thing.Id, T]) -> None:
         if not (self._path / BaseSnapshotManager.PATH_MARKER).exists():
             raise ValueError("Marker file not found")
-        for thing_id in self._thing_ids:
-            thing_path = self._path / f"{thing_id}.json"
-            thing_path.unlink()
-        for thing_id, thing in snapshot.items():
-            thing_path = self._path / f"{thing_id}.json"
-            thing_dict = thing.to_dict()
-            thing_path.write_text(json.dumps(thing_dict))
-        self._thing_ids = set(snapshot.keys())
+        for id_ in self._ids:
+            path = self._path / f"{id_}.json"
+            path.unlink()
+        for id_, object_ in snapshot.items():
+            path = self._path / f"{id_}.json"
+            dict_ = object_.to_dict()
+            path.write_text(json.dumps(dict_))
+        self._ids = set(snapshot.keys())
 
     PATH_MARKER = ".snapshot"
 
@@ -210,20 +210,20 @@ class Meerkat(Generic[T, TSE_covariant]):
 
         after_snapshot = truth_source_result
 
-        thing_operations: dict[Thing.Id, Operation[T]] = {}
+        operations: dict[Thing.Id, Operation[T]] = {}
         for key in before_snapshot.keys() & after_snapshot.keys():
             if (before := before_snapshot[key]) != (after := after_snapshot[key]):
-                thing_operations[key] = UpdateOperation(before, after)
+                operations[key] = UpdateOperation(before, after)
         for key in before_snapshot.keys() - after_snapshot.keys():
-            thing_operations[key] = DeleteOperation(before_snapshot[key])
+            operations[key] = DeleteOperation(before_snapshot[key])
         for key in after_snapshot.keys() - before_snapshot.keys():
-            thing_operations[key] = CreateOperation(after_snapshot[key])
+            operations[key] = CreateOperation(after_snapshot[key])
 
-        if len(thing_operations) == 0:
+        if len(operations) == 0:
             return
 
         self._snapshot_manager.overwrite(after_snapshot)
-        await self._action_executor.run(thing_operations)
+        await self._action_executor.run(operations)
 
     @staticmethod
     def create(
@@ -237,9 +237,9 @@ class Meerkat(Generic[T, TSE_covariant]):
             truth_source_fetcher=truth_source_fetcher,
             truth_source_error_handler=BaseTruthSourceErrorHandler(),
             snapshot_manager=BaseSnapshotManager(
-                thing_class=truth_source_fetcher.get_class(),
+                class_=truth_source_fetcher.get_class(),
                 path=snapshot_path,
-                thing_ids={p.stem for p in snapshot_path.glob("*.json")},
+                ids={p.stem for p in snapshot_path.glob("*.json")},
             ),
             action_executor=BaseActionExecutor(
                 name=name,
