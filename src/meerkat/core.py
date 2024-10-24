@@ -105,7 +105,8 @@ class BaseActionExecutor(ActionExecutor[T]):
         self._stringifier = stringifier
 
     async def run(self, operations: dict[Thing.Id, Operation[T]]) -> None:
-        print(f"Changes for {self._name} [{datetime.now().replace(microsecond=0)}]")
+        timestamp = datetime.now().replace(microsecond=0)
+        print(f"{self.GREEN}Changes for {self._name} [{timestamp}]{self.RESET}")
 
         create_operations: dict[Thing.Id, CreateOperation] = {
             k: v for k, v in operations.items() if isinstance(v, CreateOperation)
@@ -118,18 +119,25 @@ class BaseActionExecutor(ActionExecutor[T]):
         }
 
         if len(create_operations) > 0:
-            print("* Created:")
-            for create_operation in create_operations.values():
-                print(f"  * {self._stringifier(create_operation.item)}")
+            print(f"{self.YELLOW}* Created:{self.RESET}")
+            for id_, create_operation in create_operations.items():
+                print(f"  * {id_}")
+                print(f"    {self._stringifier(create_operation.item)}")
         if len(delete_operations) > 0:
-            print("* Deleted:")
-            for delete_operation in delete_operations.values():
-                print(f"  * {self._stringifier(delete_operation.item)}")
+            print(f"{self.YELLOW}* Deleted:{self.RESET}")
+            for id_, delete_operation in delete_operations.items():
+                print(f"  * {id_}")
+                print(f"    {self._stringifier(delete_operation.item)}")
         if len(update_operations) > 0:
-            print("* Updated:")
-            for update_operation in update_operations.values():
-                print(f"  * from: {self._stringifier(update_operation.before)}")
+            print(f"{self.YELLOW}* Updated:{self.RESET}")
+            for id_, update_operation in update_operations.items():
+                print(f"  * {id_}")
+                print(f"    from: {self._stringifier(update_operation.before)}")
                 print(f"    to:   {self._stringifier(update_operation.after)}")
+
+    GREEN = "\033[32m"
+    YELLOW = "\033[33m"
+    RESET = "\033[0m"
 
 
 class BaseSnapshotManager(SnapshotManager[T]):
