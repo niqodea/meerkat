@@ -75,8 +75,14 @@ class FakeSnapshotManager(SnapshotManager[DummyThing]):
     def get(self) -> dict[str, DummyThing]:
         return self._things
 
-    def overwrite(self, things: dict[str, DummyThing]) -> None:
-        self._things = things
+    def update(self, operations: dict[DummyThing.Id, Operation[DummyThing]]) -> None:
+        for id_, operation in operations.items():
+            if isinstance(operation, CreateOperation):
+                self._things[id_] = operation.item
+            elif isinstance(operation, DeleteOperation):
+                del self._things[id_]
+            elif isinstance(operation, UpdateOperation):
+                self._things[id_] = operation.after
 
 
 class MockIntervalManager(IntervalManager):

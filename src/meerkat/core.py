@@ -72,7 +72,7 @@ class ActionExecutor(Protocol[T]):
 class SnapshotManager(Protocol[T]):
     def get(self) -> dict[Thing.Id, T]: ...
 
-    def overwrite(self, snapshot: dict[Thing.Id, T]) -> None: ...
+    def update(self, operations: dict[Thing.Id, Operation[T]]) -> None: ...
 
 
 class IntervalManager(Protocol):
@@ -160,19 +160,28 @@ class BaseSnapshotManager(SnapshotManager[T]):
             snapshot[id_] = object_
         return snapshot
 
-    def overwrite(self, snapshot: dict[Thing.Id, T]) -> None:
+    def update(self, operations: dict[Thing.Id, Operation[T]]) -> None:
         marker_path = self._path / BaseSnapshotManager.MARKER_FILENAME
         if not marker_path.exists():
             raise ValueError("Marker file not found")
         marker_path.write_text(datetime.now().isoformat(timespec="seconds"))
-        for id_ in self._ids:
+
+        for id_, operation in operations.items():
             path = self._path / f"{id_}.json"
-            path.unlink()
-        for id_, object_ in snapshot.items():
-            path = self._path / f"{id_}.json"
-            dict_ = object_.to_dict()
-            path.write_text(json.dumps(dict_))
-        self._ids = set(snapshot.keys())
+            if isinstance(operation, CreateOperation):
+                self._ids.add(id_)
+                object_ = operation.item
+                dict_ = object_.to_dict()
+                path.write_text(json.dumps(dict_))
+            elif isinstance(operation, DeleteOperation):
+                self._ids.remove(id_)
+                path.unlink()
+            elif isinstance(operation, UpdateOperation):
+                object_ = operation.after
+                dict_ = object_.to_dict()
+                path.write_text(json.dumps(dict_))
+            else:
+                raise ValueError(f"Unsupported operation: {operation}")
 
     MARKER_FILENAME = ".snapshot"
 
@@ -254,7 +263,7 @@ class Meerkat(Generic[T, TSE_covariant]):
         if len(operations) == 0:
             return
 
-        self._snapshot_manager.overwrite(after_snapshot)
+        self._snapshot_manager.update(operations)
         await self._action_executor.run(operations)
 
     @staticmethod
