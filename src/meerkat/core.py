@@ -161,8 +161,10 @@ class BaseSnapshotManager(SnapshotManager[T]):
         return snapshot
 
     def overwrite(self, snapshot: dict[Thing.Id, T]) -> None:
-        if not (self._path / BaseSnapshotManager.PATH_MARKER).exists():
+        marker_path = self._path / BaseSnapshotManager.MARKER_FILENAME
+        if not marker_path.exists():
             raise ValueError("Marker file not found")
+        marker_path.write_text(datetime.now().isoformat(timespec="seconds"))
         for id_ in self._ids:
             path = self._path / f"{id_}.json"
             path.unlink()
@@ -172,7 +174,7 @@ class BaseSnapshotManager(SnapshotManager[T]):
             path.write_text(json.dumps(dict_))
         self._ids = set(snapshot.keys())
 
-    PATH_MARKER = ".snapshot"
+    MARKER_FILENAME = ".snapshot"
 
     @staticmethod
     def create(
@@ -182,7 +184,7 @@ class BaseSnapshotManager(SnapshotManager[T]):
         if not path.is_dir():
             raise ValueError(f"Could not find directory: {path}")
 
-        marker_path = path / BaseSnapshotManager.PATH_MARKER
+        marker_path = path / BaseSnapshotManager.MARKER_FILENAME
 
         if not marker_path.exists() and any(path.iterdir()):
             raise ValueError(f"Uninitialized snapshot directory is not empty: {path}")
