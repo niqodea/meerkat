@@ -32,14 +32,15 @@ class DummyTruthSourceError(TruthSourceError):
 
 class MockTruthSourceFetcher(TruthSourceFetcher[DummyThing, DummyTruthSourceError]):
     def __init__(
-        self, snapshots: Iterator[dict[str, DummyThing] | DummyTruthSourceError]
+        self,
+        snapshots: Iterator[dict[DummyThing.Id, DummyThing] | DummyTruthSourceError],
     ):
         self._snapshots = snapshots
 
     def get_class(self) -> type[DummyThing]:
         return DummyThing
 
-    async def run(self) -> dict[str, DummyThing] | DummyTruthSourceError:
+    async def run(self) -> dict[DummyThing.Id, DummyThing] | DummyTruthSourceError:
         return next(self._snapshots)
 
 
@@ -60,19 +61,19 @@ class MockTruthSourceErrorHandler(TruthSourceErrorHandler[DummyTruthSourceError]
 class MockActionExecutor(ActionExecutor[DummyThing]):
     def __init__(
         self,
-        futures: Iterator[asyncio.Future[dict[str, Operation[DummyThing]]]],
+        futures: Iterator[asyncio.Future[dict[DummyThing.Id, Operation[DummyThing]]]],
     ) -> None:
         self._futures = futures
 
-    async def run(self, operations: dict[str, Operation[DummyThing]]) -> None:
+    async def run(self, operations: dict[DummyThing.Id, Operation[DummyThing]]) -> None:
         next(self._futures).set_result(operations)
 
 
 class FakeSnapshotManager(SnapshotManager[DummyThing]):
-    def __init__(self, things: dict[str, DummyThing]):
+    def __init__(self, things: dict[DummyThing.Id, DummyThing]):
         self._things = things
 
-    def get(self) -> dict[str, DummyThing]:
+    def get(self) -> dict[DummyThing.Id, DummyThing]:
         return self._things
 
     def update(self, operations: dict[DummyThing.Id, Operation[DummyThing]]) -> None:
@@ -101,7 +102,9 @@ async def test_core() -> None:
         "3": DummyThing(value="c"),
     }
 
-    truth_source_results: list[dict[str, DummyThing] | DummyTruthSourceError] = [
+    truth_source_results: list[
+        dict[DummyThing.Id, DummyThing] | DummyTruthSourceError
+    ] = [
         {
             "1": DummyThing(value="a"),
             "3": DummyThing(value="c"),
@@ -123,7 +126,7 @@ async def test_core() -> None:
     ]
 
     # Derived from the evolution of the DummyThing population above, None means error
-    operations_history: list[dict[str, Operation[DummyThing]] | None] = [
+    operations_history: list[dict[DummyThing.Id, Operation[DummyThing]] | None] = [
         {
             "2": DeleteOperation(DummyThing(value="b")),
             "4": CreateOperation(DummyThing(value="d")),
@@ -156,7 +159,9 @@ async def test_core() -> None:
         for truth_source_result in truth_source_results
         if isinstance(truth_source_result, DummyTruthSourceError)
     ]
-    action_executor_futures: list[asyncio.Future[dict[str, Operation[DummyThing]]]] = [
+    action_executor_futures: list[
+        asyncio.Future[dict[DummyThing.Id, Operation[DummyThing]]]
+    ] = [
         asyncio.Future()
         for operations in operations_history
         if operations is not None and len(operations) > 0
