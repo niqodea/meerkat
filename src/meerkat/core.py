@@ -105,7 +105,7 @@ class BaseActionExecutor(ActionExecutor[T]):
         self._stringifier = stringifier
 
     async def run(self, operations: dict[Thing.Id, Operation[T]]) -> None:
-        timestamp = datetime.now().replace(microsecond=0)
+        timestamp = datetime.now().isoformat(sep=" ", timespec="seconds")
         print(f"{self.GREEN}Changes for {self._name} [{timestamp}]{self.RESET}")
 
         create_operations: dict[Thing.Id, CreateOperation] = {
