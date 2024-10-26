@@ -175,7 +175,7 @@ class BaseSnapshotManager(SnapshotManager[T]):
             object_ = self._class.from_dict(json.loads(path.read_text()))
             path.unlink()
             self._ids.remove(id_)
-            operations[id_] = DeleteOperation(snapshot[id_])
+            operations[id_] = DeleteOperation(object_)
 
         for id_ in snapshot.keys() - self._ids:
             path = self._path / f"{id_}.json"
