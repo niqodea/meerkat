@@ -70,20 +70,26 @@ class MockActionExecutor(ActionExecutor[DummyThing]):
 
 
 class FakeSnapshotManager(SnapshotManager[DummyThing]):
-    def __init__(self, things: dict[DummyThing.Id, DummyThing]):
-        self._things = things
+    def __init__(self, snapshot: dict[DummyThing.Id, DummyThing]):
+        self._snapshot = snapshot
 
-    def get(self) -> dict[DummyThing.Id, DummyThing]:
-        return self._things
+    def run(
+        self, snapshot: dict[DummyThing.Id, DummyThing]
+    ) -> dict[DummyThing.Id, Operation[DummyThing]]:
+        operations: dict[DummyThing.Id, Operation[DummyThing]] = {}
 
-    def update(self, operations: dict[DummyThing.Id, Operation[DummyThing]]) -> None:
-        for id_, operation in operations.items():
-            if isinstance(operation, CreateOperation):
-                self._things[id_] = operation.item
-            elif isinstance(operation, DeleteOperation):
-                del self._things[id_]
-            elif isinstance(operation, UpdateOperation):
-                self._things[id_] = operation.after
+        for id_ in snapshot.keys() & self._snapshot.keys():
+            if snapshot[id_] != self._snapshot[id_]:
+                operations[id_] = UpdateOperation(self._snapshot[id_], snapshot[id_])
+            self._snapshot[id_] = snapshot[id_]
+        for id_ in self._snapshot.keys() - snapshot.keys():
+            operations[id_] = DeleteOperation(self._snapshot[id_])
+            del self._snapshot[id_]
+        for id_ in snapshot.keys() - self._snapshot.keys():
+            operations[id_] = CreateOperation(snapshot[id_])
+            self._snapshot[id_] = snapshot[id_]
+
+        return operations
 
 
 class MockIntervalManager(IntervalManager):

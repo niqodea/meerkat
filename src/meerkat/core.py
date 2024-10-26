@@ -70,9 +70,7 @@ class ActionExecutor(Protocol[T]):
 
 
 class SnapshotManager(Protocol[T]):
-    def get(self) -> dict[Thing.Id, T]: ...
-
-    def update(self, operations: dict[Thing.Id, Operation[T]]) -> None: ...
+    def run(self, new_snapshot: dict[Thing.Id, T]) -> dict[Thing.Id, Operation[T]]: ...
 
 
 class IntervalManager(Protocol):
@@ -154,37 +152,38 @@ class BaseSnapshotManager(SnapshotManager[T]):
         self._path = path
         self._ids = ids
 
-    def get(self) -> dict[Thing.Id, T]:
-        snapshot = {}
-        for id_ in self._ids:
-            path = self._path / f"{id_}.json"
-            dict_ = json.loads(path.read_text())
-            object_ = self._class.from_dict(dict_)
-            snapshot[id_] = object_
-        return snapshot
-
-    def update(self, operations: dict[Thing.Id, Operation[T]]) -> None:
+    def run(self, snapshot: dict[Thing.Id, T]) -> dict[Thing.Id, Operation[T]]:
         marker_path = self._path / BaseSnapshotManager.MARKER_FILENAME
         if not marker_path.exists():
             raise ValueError("Marker file not found")
         marker_path.write_text(datetime.now().isoformat(timespec="seconds"))
 
-        for id_, operation in operations.items():
+        operations: dict[Thing.Id, Operation[T]] = {}
+
+        for id_ in self._ids & snapshot.keys():
             path = self._path / f"{id_}.json"
-            if isinstance(operation, CreateOperation):
-                self._ids.add(id_)
-                object_ = operation.item
-                dict_ = object_.to_dict()
-                path.write_text(json.dumps(dict_))
-            elif isinstance(operation, DeleteOperation):
-                self._ids.remove(id_)
-                path.unlink()
-            elif isinstance(operation, UpdateOperation):
-                object_ = operation.after
-                dict_ = object_.to_dict()
-                path.write_text(json.dumps(dict_))
-            else:
-                raise ValueError(f"Unsupported operation: {operation}")
+            before = self._class.from_dict(json.loads(path.read_text()))
+            after = snapshot[id_]
+            if after == before:
+                continue
+            path.write_text(json.dumps(after.to_dict()))
+            operations[id_] = UpdateOperation(before, after)
+
+        for id_ in self._ids - snapshot.keys():
+            path = self._path / f"{id_}.json"
+            object_ = self._class.from_dict(json.loads(path.read_text()))
+            path.unlink()
+            self._ids.remove(id_)
+            operations[id_] = DeleteOperation(snapshot[id_])
+
+        for id_ in snapshot.keys() - self._ids:
+            path = self._path / f"{id_}.json"
+            object_ = snapshot[id_]
+            path.write_text(json.dumps(object_.to_dict()))
+            self._ids.add(id_)
+            operations[id_] = CreateOperation(object_)
+
+        return operations
 
     MARKER_FILENAME = ".snapshot"
 
@@ -244,29 +243,18 @@ class Meerkat(Generic[T, TSE_covariant]):
             await self._interval_manager.run()
 
     async def _peek(self) -> None:
-        before_snapshot = self._snapshot_manager.get()
-
         truth_source_result = await self._truth_source_fetcher.run()
 
         if isinstance(truth_source_result, TruthSourceError):
             await self._truth_source_error_handler.run(truth_source_result)  # type: ignore[arg-type]
             return
 
-        after_snapshot = truth_source_result
-
-        operations: dict[Thing.Id, Operation[T]] = {}
-        for key in before_snapshot.keys() & after_snapshot.keys():
-            if (before := before_snapshot[key]) != (after := after_snapshot[key]):
-                operations[key] = UpdateOperation(before, after)
-        for key in before_snapshot.keys() - after_snapshot.keys():
-            operations[key] = DeleteOperation(before_snapshot[key])
-        for key in after_snapshot.keys() - before_snapshot.keys():
-            operations[key] = CreateOperation(after_snapshot[key])
+        snapshot = truth_source_result
+        operations = self._snapshot_manager.run(snapshot)
 
         if len(operations) == 0:
             return
 
-        self._snapshot_manager.update(operations)
         await self._action_executor.run(operations)
 
     @staticmethod
