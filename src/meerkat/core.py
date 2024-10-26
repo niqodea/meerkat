@@ -81,6 +81,7 @@ class IntervalManager(Protocol):
 # Base implementations
 
 
+@dataclass
 class BaseTruthSourceError(TruthSourceError):
     message: str
 
