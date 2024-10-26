@@ -92,7 +92,10 @@ class BaseTruthSourceErrorHandler(TruthSourceErrorHandler[BaseTruthSourceError])
         return BaseTruthSourceError
 
     async def run(self, error: BaseTruthSourceError) -> None:
-        print(f"Error: {error.message}")
+        print(f"{self.RED}Error: {error.message}{self.RESET}")
+
+    RED = "\033[91m"
+    RESET = "\033[0m"
 
 
 class BaseActionExecutor(ActionExecutor[T]):
