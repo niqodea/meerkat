@@ -167,7 +167,7 @@ class BaseSnapshotManager(SnapshotManager[T]):
             after = snapshot[id_]
             if after == before:
                 continue
-            path.write_text(json.dumps(after.to_dict()))
+            path.write_text(json.dumps(after.to_dict(), indent=2))
             operations[id_] = UpdateOperation(before, after)
 
         for id_ in self._ids - snapshot.keys():
@@ -180,7 +180,7 @@ class BaseSnapshotManager(SnapshotManager[T]):
         for id_ in snapshot.keys() - self._ids:
             path = self._path / f"{id_}.json"
             object_ = snapshot[id_]
-            path.write_text(json.dumps(object_.to_dict()))
+            path.write_text(json.dumps(object_.to_dict(), indent=2))
             self._ids.add(id_)
             operations[id_] = CreateOperation(object_)
 
