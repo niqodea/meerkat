@@ -172,7 +172,7 @@ class BaseSnapshotManager(SnapshotManager[T]):
 
     async def run(self, snapshot: dict[Thing.Id, T]) -> dict[Thing.Id, Operation[T]]:
         marker_path = self._path / BaseSnapshotManager.MARKER_FILENAME
-        if not marker_path.exists():
+        if not await marker_path.exists():
             raise ValueError("Marker file not found")
         await marker_path.write_text(datetime.now().isoformat(timespec="seconds"))
 
@@ -190,7 +190,7 @@ class BaseSnapshotManager(SnapshotManager[T]):
         for id_ in self._ids - snapshot.keys():
             path = self._path / f"{id_}.json"
             object_ = self._class.from_dict(json.loads(await path.read_text()))
-            path.unlink()
+            await path.unlink()
             self._ids.remove(id_)
             operations[id_] = DeleteOperation(object_)
 
@@ -206,23 +206,35 @@ class BaseSnapshotManager(SnapshotManager[T]):
     MARKER_FILENAME = ".snapshot"
 
     @staticmethod
-    def create(class_: type[T], path: Path) -> BaseSnapshotManager[T]:
-        if not path.is_dir():
+    async def create(class_: type[T], path: Path) -> BaseSnapshotManager[T]:
+        if not await path.is_dir():
             raise ValueError(f"Could not find directory: {path}")
 
         marker_path = path / BaseSnapshotManager.MARKER_FILENAME
 
-        if not marker_path.exists() and any(path.iterdir()):
-            raise ValueError(f"Uninitialized snapshot directory is not empty: {path}")
+        if not await marker_path.exists():
+            async for _ in path.iterdir():  # Effectively: if any files exist
+                raise ValueError(f"Initialized snapshot directory is not empty: {path}")
 
-        marker_path.touch()
-        ids = {p.stem for p in path.glob("*.json")}
+        await marker_path.touch()
+        ids = {p.stem async for p in path.glob("*.json")}
 
         return BaseSnapshotManager(
             class_=class_,
             path=path,
             ids=ids,
         )
+
+    @staticmethod
+    async def _validate_path(path: Path) -> None:
+        if not await path.is_dir():
+            raise ValueError(f"Could not find directory: {path}")
+
+        marker_path = path / BaseSnapshotManager.MARKER_FILENAME
+
+        if not await marker_path.exists():
+            async for _ in path.iterdir():
+                raise ValueError(f"Initialized snapshot directory is not empty: {path}")
 
 
 class BaseIntervalManager(IntervalManager):

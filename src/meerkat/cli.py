@@ -110,7 +110,7 @@ class MeerkatCliLauncher:
                 truth_source_error_handler=BaseTruthSourceErrorHandler(
                     name=name, logger=logger
                 ),
-                snapshot_manager=BaseSnapshotManager.create(
+                snapshot_manager=await BaseSnapshotManager.create(
                     class_=config.truth_source_fetcher.get_class(),
                     path=config.snapshot_path,
                 ),
