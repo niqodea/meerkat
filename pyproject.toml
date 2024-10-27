@@ -9,6 +9,7 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "^3.12"
 
+aioconsole = "^0.8"
 aiologger = "^0.7"
 aiopath = "^0.7"
 dataclass-wizard = "^0.23"
@@ -21,7 +22,7 @@ pytest = "^8.3.3"
 pytest-asyncio = "^0.24.0"
 
 [[tool.mypy.overrides]]
-module = ["aiologger", "aiopath"]
+module = ["aioconsole", "aiologger", "aiopath"]
 ignore_missing_imports = true
 
 [tool.ruff.lint]

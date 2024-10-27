@@ -90,14 +90,17 @@ class BaseTruthSourceError(TruthSourceError):
 
 
 class BaseTruthSourceErrorHandler(TruthSourceErrorHandler[BaseTruthSourceError]):
-    def __init__(self, logger: Logger) -> None:
+    def __init__(self, name: str, logger: Logger) -> None:
+        self._name = name
         self._logger = logger
 
     def get_class(self) -> type[BaseTruthSourceError]:
         return BaseTruthSourceError
 
     async def run(self, error: BaseTruthSourceError) -> None:
-        await self._logger.error(f"{self.RED}{error.message}{self.RESET}")
+        await self._logger.error(
+            f"{self.RED}Error for {self._name}: {error.message}{self.RESET}"
+        )
 
     RED = "\033[91m"
     RESET = "\033[0m"
@@ -203,10 +206,7 @@ class BaseSnapshotManager(SnapshotManager[T]):
     MARKER_FILENAME = ".snapshot"
 
     @staticmethod
-    def create(
-        class_: type[T],
-        path: Path,
-    ) -> BaseSnapshotManager[T]:
+    def create(class_: type[T], path: Path) -> BaseSnapshotManager[T]:
         if not path.is_dir():
             raise ValueError(f"Could not find directory: {path}")
 
@@ -271,29 +271,3 @@ class Meerkat(Generic[T, TSE_covariant]):
             return
 
         await self._action_executor.run(operations)
-
-    @staticmethod
-    def create(
-        name: str,
-        truth_source_fetcher: TruthSourceFetcher[T, BaseTruthSourceError],
-        stringifier: Callable[[T], str],
-        snapshot_path: Path,
-        interval_seconds: int,
-    ) -> Meerkat[T, BaseTruthSourceError]:
-        logger = Logger.with_default_handlers(name=name)
-        return Meerkat(
-            truth_source_fetcher=truth_source_fetcher,
-            truth_source_error_handler=BaseTruthSourceErrorHandler(logger=logger),
-            snapshot_manager=BaseSnapshotManager.create(
-                class_=truth_source_fetcher.get_class(),
-                path=snapshot_path,
-            ),
-            action_executor=BaseActionExecutor(
-                name=name,
-                stringifier=stringifier,
-                logger=logger,
-            ),
-            interval_manager=BaseIntervalManager(
-                interval_seconds=interval_seconds,
-            ),
-        )
