@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, ClassVar, Generic, Protocol, TypeAlias, TypeVar
 
+from aiologger import Logger
 from dataclass_wizard import JSONWizard  # type: ignore[import-untyped]
 
 # --------------------------------------------------------------------------------------
@@ -87,11 +88,14 @@ class BaseTruthSourceError(TruthSourceError):
 
 
 class BaseTruthSourceErrorHandler(TruthSourceErrorHandler[BaseTruthSourceError]):
+    def __init__(self, logger: Logger) -> None:
+        self._logger = logger
+
     def get_class(self) -> type[BaseTruthSourceError]:
         return BaseTruthSourceError
 
     async def run(self, error: BaseTruthSourceError) -> None:
-        print(f"{self.RED}Error: {error.message}{self.RESET}")
+        await self._logger.error(f"{self.RED}{error.message}{self.RESET}")
 
     RED = "\033[91m"
     RESET = "\033[0m"
@@ -102,13 +106,17 @@ class BaseActionExecutor(ActionExecutor[T]):
         self,
         name: str,
         stringifier: Callable[[T], str],
+        logger: Logger,
     ) -> None:
         self._name = name
         self._stringifier = stringifier
+        self._logger = logger
 
     async def run(self, operations: dict[Thing.Id, Operation[T]]) -> None:
         timestamp = datetime.now().isoformat(sep=" ", timespec="seconds")
-        print(f"{self.GREEN}Changes for {self._name} [{timestamp}]{self.RESET}")
+        await self._logger.info(
+            f"{self.GREEN}Changes for {self._name} [{timestamp}]{self.RESET}"
+        )
 
         create_operations: dict[Thing.Id, CreateOperation] = {
             k: v for k, v in operations.items() if isinstance(v, CreateOperation)
@@ -121,21 +129,25 @@ class BaseActionExecutor(ActionExecutor[T]):
         }
 
         if len(create_operations) > 0:
-            print(f"{self.YELLOW}* Created:{self.RESET}")
+            await self._logger.info(f"{self.YELLOW}* Created:{self.RESET}")
             for id_, create_operation in create_operations.items():
-                print(f"  * {id_}")
-                print(f"    {self._stringifier(create_operation.item)}")
+                await self._logger.info(
+                    f"  * {id_}\n" f"    {self._stringifier(create_operation.item)}"
+                )
         if len(delete_operations) > 0:
-            print(f"{self.YELLOW}* Deleted:{self.RESET}")
+            await self._logger.info(f"{self.YELLOW}* Deleted:{self.RESET}")
             for id_, delete_operation in delete_operations.items():
-                print(f"  * {id_}")
-                print(f"    {self._stringifier(delete_operation.item)}")
+                await self._logger.info(
+                    f"  * {id_}\n" f"    {self._stringifier(delete_operation.item)}"
+                )
         if len(update_operations) > 0:
-            print(f"{self.YELLOW}* Updated:{self.RESET}")
+            await self._logger.info(f"{self.YELLOW}* Updated:{self.RESET}")
             for id_, update_operation in update_operations.items():
-                print(f"  * {id_}")
-                print(f"    from: {self._stringifier(update_operation.before)}")
-                print(f"    to:   {self._stringifier(update_operation.after)}")
+                await self._logger.info(
+                    f"  * {id_}\n"
+                    f"    from: {self._stringifier(update_operation.before)}\n"
+                    f"    to:   {self._stringifier(update_operation.after)}"
+                )
 
     GREEN = "\033[32m"
     YELLOW = "\033[33m"
@@ -266,9 +278,10 @@ class Meerkat(Generic[T, TSE_covariant]):
         snapshot_path: Path,
         interval_seconds: int,
     ) -> Meerkat[T, BaseTruthSourceError]:
+        logger = Logger.with_default_handlers(name=name)
         return Meerkat(
             truth_source_fetcher=truth_source_fetcher,
-            truth_source_error_handler=BaseTruthSourceErrorHandler(),
+            truth_source_error_handler=BaseTruthSourceErrorHandler(logger=logger),
             snapshot_manager=BaseSnapshotManager.create(
                 class_=truth_source_fetcher.get_class(),
                 path=snapshot_path,
@@ -276,6 +289,7 @@ class Meerkat(Generic[T, TSE_covariant]):
             action_executor=BaseActionExecutor(
                 name=name,
                 stringifier=stringifier,
+                logger=logger,
             ),
             interval_manager=BaseIntervalManager(
                 interval_seconds=interval_seconds,
