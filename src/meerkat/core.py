@@ -4,10 +4,10 @@ import asyncio
 import json
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
 from typing import Callable, ClassVar, Generic, Protocol, TypeAlias, TypeVar
 
 from aiologger import Logger
+from aiopath import Path
 from dataclass_wizard import JSONWizard  # type: ignore[import-untyped]
 
 # --------------------------------------------------------------------------------------
@@ -71,7 +71,9 @@ class ActionExecutor(Protocol[T]):
 
 
 class SnapshotManager(Protocol[T]):
-    def run(self, new_snapshot: dict[Thing.Id, T]) -> dict[Thing.Id, Operation[T]]: ...
+    async def run(
+        self, new_snapshot: dict[Thing.Id, T]
+    ) -> dict[Thing.Id, Operation[T]]: ...
 
 
 class IntervalManager(Protocol):
@@ -165,26 +167,26 @@ class BaseSnapshotManager(SnapshotManager[T]):
         self._path = path
         self._ids = ids
 
-    def run(self, snapshot: dict[Thing.Id, T]) -> dict[Thing.Id, Operation[T]]:
+    async def run(self, snapshot: dict[Thing.Id, T]) -> dict[Thing.Id, Operation[T]]:
         marker_path = self._path / BaseSnapshotManager.MARKER_FILENAME
         if not marker_path.exists():
             raise ValueError("Marker file not found")
-        marker_path.write_text(datetime.now().isoformat(timespec="seconds"))
+        await marker_path.write_text(datetime.now().isoformat(timespec="seconds"))
 
         operations: dict[Thing.Id, Operation[T]] = {}
 
         for id_ in self._ids & snapshot.keys():
             path = self._path / f"{id_}.json"
-            before = self._class.from_dict(json.loads(path.read_text()))
+            before = self._class.from_dict(json.loads(await path.read_text()))
             after = snapshot[id_]
             if after == before:
                 continue
-            path.write_text(json.dumps(after.to_dict(), indent=2))
+            await path.write_text(json.dumps(after.to_dict(), indent=2))
             operations[id_] = UpdateOperation(before, after)
 
         for id_ in self._ids - snapshot.keys():
             path = self._path / f"{id_}.json"
-            object_ = self._class.from_dict(json.loads(path.read_text()))
+            object_ = self._class.from_dict(json.loads(await path.read_text()))
             path.unlink()
             self._ids.remove(id_)
             operations[id_] = DeleteOperation(object_)
@@ -192,7 +194,7 @@ class BaseSnapshotManager(SnapshotManager[T]):
         for id_ in snapshot.keys() - self._ids:
             path = self._path / f"{id_}.json"
             object_ = snapshot[id_]
-            path.write_text(json.dumps(object_.to_dict(), indent=2))
+            await path.write_text(json.dumps(object_.to_dict(), indent=2))
             self._ids.add(id_)
             operations[id_] = CreateOperation(object_)
 
@@ -263,7 +265,7 @@ class Meerkat(Generic[T, TSE_covariant]):
             return
 
         snapshot = truth_source_result
-        operations = self._snapshot_manager.run(snapshot)
+        operations = await self._snapshot_manager.run(snapshot)
 
         if len(operations) == 0:
             return

@@ -73,7 +73,7 @@ class FakeSnapshotManager(SnapshotManager[DummyThing]):
     def __init__(self, snapshot: dict[DummyThing.Id, DummyThing]):
         self._snapshot = snapshot
 
-    def run(
+    async def run(
         self, snapshot: dict[DummyThing.Id, DummyThing]
     ) -> dict[DummyThing.Id, Operation[DummyThing]]:
         operations: dict[DummyThing.Id, Operation[DummyThing]] = {}
