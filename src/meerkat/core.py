@@ -16,6 +16,10 @@ from dataclass_wizard import JSONWizard  # type: ignore[import-untyped]
 
 @dataclass
 class Thing(JSONWizard):
+    """
+    Can be monitored by meerkat.
+    """
+
     Id: ClassVar[TypeAlias] = str
 
 
@@ -24,27 +28,58 @@ T_covariant = TypeVar("T_covariant", bound=Thing, covariant=True)
 
 
 @dataclass
-class Operation(Generic[T]): ...
+class Operation(Generic[T]):
+    """
+    Represents an operation over a thing.
+    """
 
 
 @dataclass
 class CreateOperation(Operation[T]):
+    """
+    Represents creation of a thing.
+    """
+
     item: T
+    """
+    The craeted thing.
+    """
 
 
 @dataclass
 class DeleteOperation(Operation[T]):
+    """
+    Represents deletion of a thing.
+    """
+
     item: T
+    """
+    The deleted thing.
+    """
 
 
 @dataclass
 class UpdateOperation(Operation[T]):
+    """
+    Represents update of a thing.
+    """
+
     before: T
+    """
+    The thing before the update.
+    """
+
     after: T
+    """
+    The thing after the update.
+    """
 
 
 @dataclass
-class TruthSourceError: ...
+class TruthSourceError:
+    """
+    Represents an error from a truth source.
+    """
 
 
 TSE = TypeVar("TSE", bound=TruthSourceError)
@@ -55,29 +90,78 @@ TSE_covariant = TypeVar("TSE_covariant", bound=TruthSourceError, covariant=True)
 
 
 class TruthSourceFetcher(Protocol[T_covariant, TSE_covariant]):
-    def get_class(self) -> type[T_covariant]: ...
+    """
+    Fetches things from a truth source.
+    """
 
-    async def run(self) -> dict[Thing.Id, T_covariant] | TSE_covariant: ...
+    def get_class(self) -> type[T_covariant]:
+        """
+        :return: Type of things fetched by this fetcher.
+        """
+
+    async def run(self) -> dict[Thing.Id, T_covariant] | TSE_covariant:
+        """
+        Fetches data from the truth source.
+
+        :return: Things fetched from the truth source or an error.
+        """
 
 
 class TruthSourceErrorHandler(Protocol[TSE]):
-    def get_class(self) -> type[TSE]: ...
+    """
+    Handles truth source errors.
+    """
 
-    async def run(self, error: TSE) -> None: ...
+    def get_class(self) -> type[TSE]:
+        """
+        :return: Type of truth source errors handled by this handler.
+        """
+
+    async def run(self, error: TSE) -> None:
+        """
+        Handles a truth source error.
+
+        :param error: Truth source error.
+        """
 
 
 class ActionExecutor(Protocol[T]):
-    async def run(self, operations: dict[Thing.Id, Operation[T]]): ...
+    """
+    Executes actions in response to operations over things.
+    """
+
+    async def run(self, operations: dict[Thing.Id, Operation[T]]):
+        """
+        Execute an action.
+
+        :param operations: Operations to execute the action against.
+        """
 
 
 class SnapshotManager(Protocol[T]):
-    async def run(
-        self, new_snapshot: dict[Thing.Id, T]
-    ) -> dict[Thing.Id, Operation[T]]: ...
+    """
+    Tracks a snapshot of things and computes operations over them.
+    """
+
+    async def run(self, snapshot: dict[Thing.Id, T]) -> dict[Thing.Id, Operation[T]]:
+        """
+        Track a snapshot of things and compute operations by comparison against the
+        previously tracked snapshot.
+
+        :param snapshot: Snapshot of things to track.
+        :return: Operations over the things.
+        """
 
 
 class IntervalManager(Protocol):
-    async def run(self) -> None: ...
+    """
+    Manages intervals between two subsequent runs.
+    """
+
+    async def run(self) -> None:
+        """
+        Run the interval.
+        """
 
 
 # --------------------------------------------------------------------------------------
@@ -86,12 +170,27 @@ class IntervalManager(Protocol):
 
 @dataclass
 class BaseTruthSourceError(TruthSourceError):
+    """
+    Simple truth source error.
+    """
+
     message: str
+    """
+    Message describing the error.
+    """
 
 
 class BaseTruthSourceErrorHandler(TruthSourceErrorHandler[BaseTruthSourceError]):
-    def __init__(self, name: str, logger: Logger) -> None:
-        self._name = name
+    """
+    Logs truth source errors as text.
+    """
+
+    def __init__(self, domain_name: str, logger: Logger) -> None:
+        """
+        :param domain_name: Name of the domain of things.
+        :param logger: Logger to use.
+        """
+        self._domain_name = domain_name
         self._logger = logger
 
     def get_class(self) -> type[BaseTruthSourceError]:
@@ -99,7 +198,7 @@ class BaseTruthSourceErrorHandler(TruthSourceErrorHandler[BaseTruthSourceError])
 
     async def run(self, error: BaseTruthSourceError) -> None:
         await self._logger.error(
-            f"{self.RED}Error for {self._name}: {error.message}{self.RESET}"
+            f"{self.RED}Error for {self._domain_name}: {error.message}{self.RESET}"
         )
 
     RED = "\033[91m"
@@ -107,20 +206,29 @@ class BaseTruthSourceErrorHandler(TruthSourceErrorHandler[BaseTruthSourceError])
 
 
 class BaseActionExecutor(ActionExecutor[T]):
+    """
+    Logs operations over things as text.
+    """
+
     def __init__(
         self,
-        name: str,
+        domain_name: str,
         stringifier: Callable[[T], str],
         logger: Logger,
     ) -> None:
-        self._name = name
+        """
+        :param domain_name: Name of the domain of things.
+        :param stringifier: Stringifier to use to convert things to strings.
+        :param logger: Logger to use.
+        """
+        self._domain_name = domain_name
         self._stringifier = stringifier
         self._logger = logger
 
     async def run(self, operations: dict[Thing.Id, Operation[T]]) -> None:
         timestamp = datetime.now().isoformat(sep=" ", timespec="seconds")
         await self._logger.info(
-            f"{self.GREEN}Changes for {self._name} [{timestamp}]{self.RESET}"
+            f"{self.GREEN}Changes for {self._domain_name} [{timestamp}]{self.RESET}"
         )
 
         create_operations: dict[Thing.Id, CreateOperation] = {
@@ -160,12 +268,21 @@ class BaseActionExecutor(ActionExecutor[T]):
 
 
 class BaseSnapshotManager(SnapshotManager[T]):
+    """
+    Tracks a snapshot of things on disk as JSON files.
+    """
+
     def __init__(
         self,
         class_: type[T],
         path: Path,
         ids: set[Thing.Id],
     ) -> None:
+        """
+        :param class_: Class of the things.
+        :param path: Path to the directory where things are stored.
+        :param ids: Ids of the existing things.
+        """
         self._class = class_
         self._path = path
         self._ids = ids
@@ -207,13 +324,23 @@ class BaseSnapshotManager(SnapshotManager[T]):
 
     @staticmethod
     async def create(class_: type[T], path: Path) -> BaseSnapshotManager[T]:
+        """
+        Create an instance of BaseSnapshotManager.
+
+        :param class_: Class of the things.
+        :param path: Path to the directory where things are stored as JSON files.
+        :return: Created instance.
+        """
         if not await path.is_dir():
             raise ValueError(f"Could not find directory: {path}")
 
         marker_path = path / BaseSnapshotManager.MARKER_FILENAME
 
         if not await marker_path.exists():
-            async for _ in path.iterdir():  # Effectively: if any files exist
+            # This is a hack to ensure that the directory is empty
+            # Normally, we would use any(p.iterdir()), but we can't do that in async
+            # any([_ async for _ in p.iterdir()]) is more readable but less performant
+            async for _ in path.iterdir():
                 raise ValueError(f"Initialized snapshot directory is not empty: {path}")
 
         await marker_path.touch()
@@ -225,20 +352,16 @@ class BaseSnapshotManager(SnapshotManager[T]):
             ids=ids,
         )
 
-    @staticmethod
-    async def _validate_path(path: Path) -> None:
-        if not await path.is_dir():
-            raise ValueError(f"Could not find directory: {path}")
-
-        marker_path = path / BaseSnapshotManager.MARKER_FILENAME
-
-        if not await marker_path.exists():
-            async for _ in path.iterdir():
-                raise ValueError(f"Initialized snapshot directory is not empty: {path}")
-
 
 class BaseIntervalManager(IntervalManager):
+    """
+    Manages fixed-time intervals.
+    """
+
     def __init__(self, interval_seconds: int) -> None:
+        """
+        :param interval_seconds: Interval in seconds.
+        """
         self._interval_seconds = interval_seconds
 
     async def run(self) -> None:
@@ -250,6 +373,10 @@ class BaseIntervalManager(IntervalManager):
 
 
 class Meerkat(Generic[T, TSE_covariant]):
+    """
+    Monitors a truth source and tracks things from it, executing actions upon changes.
+    """
+
     def __init__(
         self,
         truth_source_fetcher: TruthSourceFetcher[T, TSE_covariant],
@@ -258,6 +385,13 @@ class Meerkat(Generic[T, TSE_covariant]):
         action_executor: ActionExecutor[T],
         interval_manager: IntervalManager,
     ) -> None:
+        """
+        :param truth_source_fetcher: Fetcher for the truth source.
+        :param truth_source_error_handler: Error handler for the truth source.
+        :param snapshot_manager: Tracker of fetched things and detector of changes.
+        :param action_executor: Executor of actions upon changes.
+        :param interval_manager: Manager for intervals between monitoring sessions.
+        """
         self._truth_source_fetcher = truth_source_fetcher
         self._truth_source_error_handler = truth_source_error_handler
         self._snapshot_manager = snapshot_manager
@@ -265,6 +399,10 @@ class Meerkat(Generic[T, TSE_covariant]):
         self._interval_manager = interval_manager
 
     async def run(self) -> None:
+        """
+        Monitor the configured truth source and track things from it, executing actions
+        upon changes.
+        """
         while True:
             await self._peek()
             await self._interval_manager.run()
