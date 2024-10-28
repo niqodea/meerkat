@@ -247,13 +247,13 @@ class BaseActionExecutor(ActionExecutor[T]):
             await self._logger.info(f"{self.YELLOW}Created:{self.RESET}")
             for id_, create_operation in create_operations.items():
                 await self._logger.info(
-                    f"* {id_}\n" f"    {self._stringifier(create_operation.item)}"
+                    f"* {id_}\n" f"  {self._stringifier(create_operation.item)}"
                 )
         if len(delete_operations) > 0:
             await self._logger.info(f"{self.YELLOW}Deleted:{self.RESET}")
             for id_, delete_operation in delete_operations.items():
                 await self._logger.info(
-                    f"* {id_}\n" f"    {self._stringifier(delete_operation.item)}"
+                    f"* {id_}\n" f"  {self._stringifier(delete_operation.item)}"
                 )
         if len(update_operations) > 0:
             await self._logger.info(f"{self.YELLOW}Updated:{self.RESET}")
