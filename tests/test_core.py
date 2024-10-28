@@ -94,24 +94,16 @@ class FakeSnapshotManager(SnapshotManager[DummyThing]):
 
 
 class FakeIntervalManager(IntervalManager):
-    def __init__(self, signals: asyncio.Queue[None]) -> None:
-        self._signals = signals
+    def __init__(self, events: asyncio.Queue[asyncio.Event]) -> None:
+        self._events = events
 
-    async def run(self, early_stop_event: asyncio.Event) -> None:
-        signal_task = asyncio.create_task(self._signals.get())
-
-        async def wait_early_stop() -> None:
-            await early_stop_event.wait()
-            signal_task.cancel()
-
-        early_stop_task = asyncio.create_task(wait_early_stop())
-
-        done, pending = await asyncio.wait(
-            {signal_task, early_stop_task},
+    async def run(self, early_stop_signal: asyncio.Future) -> None:
+        event = await self._events.get()
+        end_interval_signal: asyncio.Future = asyncio.create_task(event.wait())
+        await asyncio.wait(
+            {end_interval_signal, early_stop_signal},
             return_when=asyncio.FIRST_COMPLETED,
         )
-        for task in pending:
-            task.cancel()
 
 
 @pytest.mark.asyncio
@@ -157,7 +149,7 @@ async def test_core() -> None:
     truth_source_error_handler_inputs: asyncio.Queue[DummyTruthSourceError] = (
         asyncio.Queue()
     )
-    interval_manager_signals: asyncio.Queue[None] = asyncio.Queue()
+    interval_manager_events: asyncio.Queue[asyncio.Event] = asyncio.Queue()
 
     meerkat = Meerkat(
         truth_source_fetcher=MockTruthSourceFetcher(truth_source_fetcher_outputs),
@@ -166,7 +158,7 @@ async def test_core() -> None:
         ),
         snapshot_manager=FakeSnapshotManager(snapshot, snapshot_manager_outputs),
         action_executor=MockActionExecutor(action_executor_inputs),
-        interval_manager=FakeIntervalManager(interval_manager_signals),
+        interval_manager=FakeIntervalManager(interval_manager_events),
     )
 
     end_event = asyncio.Event()
@@ -184,7 +176,9 @@ async def test_core() -> None:
                 await truth_source_error_handler_inputs.get()
             )
             assert truth_source_error_handler_input == truth_source_result
-        interval_manager_signals.put_nowait(None)
+        interval_manager_event = asyncio.Event()
+        interval_manager_events.put_nowait(interval_manager_event)
+        interval_manager_event.set()
 
     assert action_executor_inputs.empty()
     assert truth_source_error_handler_inputs.empty()

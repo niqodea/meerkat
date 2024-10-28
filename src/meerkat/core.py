@@ -158,11 +158,11 @@ class IntervalManager(Protocol):
     Manages intervals between two subsequent runs.
     """
 
-    async def run(self, early_stop_event: asyncio.Event) -> None:
+    async def run(self, early_stop_signal: asyncio.Future) -> None:
         """
         Run the interval.
 
-        :param early_stop_event: Event to stop the interval early.
+        :param early_stop_signal: Signal to stop the interval early.
         """
 
 
@@ -366,10 +366,13 @@ class BaseIntervalManager(IntervalManager):
         """
         self._interval_seconds = interval_seconds
 
-    async def run(self, early_stop_event: asyncio.Event) -> None:
-        await asyncio.wait_for(
-            early_stop_event.wait(),
-            timeout=self._interval_seconds,
+    async def run(self, early_stop_signal: asyncio.Future) -> None:
+        end_interval_signal: asyncio.Future = asyncio.create_task(
+            asyncio.sleep(self._interval_seconds)
+        )
+        await asyncio.wait(
+            {end_interval_signal, early_stop_signal},
+            return_when=asyncio.FIRST_COMPLETED,
         )
 
 
@@ -410,9 +413,10 @@ class Meerkat(Generic[T, TSE_covariant]):
 
         :param end_event: Event to end the monitoring session.
         """
+        end_signal: asyncio.Future = asyncio.create_task(end_event.wait())
         while not end_event.is_set():
             await self._peek()
-            await self._interval_manager.run(early_stop_event=end_event)
+            await self._interval_manager.run(early_stop_signal=end_signal)
 
     async def _peek(self) -> None:
         truth_source_result = await self._truth_source_fetcher.run()
