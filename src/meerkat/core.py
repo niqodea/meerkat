@@ -158,9 +158,11 @@ class IntervalManager(Protocol):
     Manages intervals between two subsequent runs.
     """
 
-    async def run(self) -> None:
+    async def run(self, early_stop_event: asyncio.Event) -> None:
         """
         Run the interval.
+
+        :param early_stop_event: Event to stop the interval early.
         """
 
 
@@ -364,8 +366,11 @@ class BaseIntervalManager(IntervalManager):
         """
         self._interval_seconds = interval_seconds
 
-    async def run(self) -> None:
-        await asyncio.sleep(self._interval_seconds)
+    async def run(self, early_stop_event: asyncio.Event) -> None:
+        await asyncio.wait_for(
+            early_stop_event.wait(),
+            timeout=self._interval_seconds,
+        )
 
 
 # --------------------------------------------------------------------------------------
@@ -407,7 +412,7 @@ class Meerkat(Generic[T, TSE_covariant]):
         """
         while not end_event.is_set():
             await self._peek()
-            await self._interval_manager.run()
+            await self._interval_manager.run(early_stop_event=end_event)
 
     async def _peek(self) -> None:
         truth_source_result = await self._truth_source_fetcher.run()

@@ -51,7 +51,7 @@ class MockTruthSourceErrorHandler(TruthSourceErrorHandler[DummyTruthSourceError]
         return DummyTruthSourceError
 
     async def run(self, error: DummyTruthSourceError) -> None:
-        await self._inputs.put(error)
+        self._inputs.put_nowait(error)
 
 
 class MockActionExecutor(ActionExecutor[DummyThing]):
@@ -61,7 +61,7 @@ class MockActionExecutor(ActionExecutor[DummyThing]):
         self._inputs = inputs
 
     async def run(self, operations: dict[DummyThing.Id, Operation[DummyThing]]) -> None:
-        await self._inputs.put(operations)
+        self._inputs.put_nowait(operations)
 
 
 class FakeSnapshotManager(SnapshotManager[DummyThing]):
@@ -89,16 +89,29 @@ class FakeSnapshotManager(SnapshotManager[DummyThing]):
             operations[id_] = CreateOperation(snapshot[id_])
             self._snapshot[id_] = snapshot[id_]
 
-        await self._outputs.put(operations)
+        self._outputs.put_nowait(operations)
         return operations
 
 
-class MockIntervalManager(IntervalManager):
+class FakeIntervalManager(IntervalManager):
     def __init__(self, signals: asyncio.Queue[None]) -> None:
         self._signals = signals
 
-    async def run(self) -> None:
-        await self._signals.get()
+    async def run(self, early_stop_event: asyncio.Event) -> None:
+        signal_task = asyncio.create_task(self._signals.get())
+
+        async def wait_early_stop() -> None:
+            await early_stop_event.wait()
+            signal_task.cancel()
+
+        early_stop_task = asyncio.create_task(wait_early_stop())
+
+        done, pending = await asyncio.wait(
+            {signal_task, early_stop_task},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        for task in pending:
+            task.cancel()
 
 
 @pytest.mark.asyncio
@@ -153,14 +166,14 @@ async def test_core() -> None:
         ),
         snapshot_manager=FakeSnapshotManager(snapshot, snapshot_manager_outputs),
         action_executor=MockActionExecutor(action_executor_inputs),
-        interval_manager=MockIntervalManager(interval_manager_signals),
+        interval_manager=FakeIntervalManager(interval_manager_signals),
     )
 
     end_event = asyncio.Event()
     task = asyncio.create_task(meerkat.run(end_event))
 
     for truth_source_result in truth_source_results:
-        await truth_source_fetcher_outputs.put(truth_source_result)
+        truth_source_fetcher_outputs.put_nowait(truth_source_result)
         if isinstance(truth_source_result, dict):
             snapshot_manager_output = await snapshot_manager_outputs.get()
             if len(snapshot_manager_output) > 0:
@@ -171,7 +184,7 @@ async def test_core() -> None:
                 await truth_source_error_handler_inputs.get()
             )
             assert truth_source_error_handler_input == truth_source_result
-        await interval_manager_signals.put(None)
+        interval_manager_signals.put_nowait(None)
 
     assert action_executor_inputs.empty()
     assert truth_source_error_handler_inputs.empty()
