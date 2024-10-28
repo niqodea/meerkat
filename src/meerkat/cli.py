@@ -64,11 +64,14 @@ class KeyController:
 
     async def run(self, shutdown_event: asyncio.Event) -> None:
         with self._canonical_mode_disabler:
-            while not shutdown_event.is_set():
-                if await self._stdin.read(1) == self.SHUTDOWN_TRIGGER:
-                    shutdown_event.set()
-                if await self._stdin.read(1) == self.CLEAR_SCREEN_TRIGGER:
-                    print(self.CLEAR_SCREEN_ESCAPE_CODES, end="", flush=True)
+            while True:
+                match await self._stdin.read(1):
+                    case self.SHUTDOWN_TRIGGER:
+                        print("\nShutting down...")
+                        shutdown_event.set()
+                        return
+                    case self.CLEAR_SCREEN_TRIGGER:
+                        print(self.CLEAR_SCREEN_ESCAPE_CODES, end="", flush=True)
 
     SHUTDOWN_TRIGGER = b"\x04"  # CTRL+D
 
