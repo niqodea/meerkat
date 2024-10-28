@@ -1,6 +1,5 @@
 import asyncio
 from dataclasses import dataclass
-from typing import Iterator
 
 import pytest
 
@@ -33,45 +32,46 @@ class DummyTruthSourceError(TruthSourceError):
 class MockTruthSourceFetcher(TruthSourceFetcher[DummyThing, DummyTruthSourceError]):
     def __init__(
         self,
-        snapshots: Iterator[dict[DummyThing.Id, DummyThing] | DummyTruthSourceError],
+        outputs: asyncio.Queue[dict[DummyThing.Id, DummyThing] | DummyTruthSourceError],
     ):
-        self._snapshots = snapshots
+        self._outputs = outputs
 
     def get_class(self) -> type[DummyThing]:
         return DummyThing
 
     async def run(self) -> dict[DummyThing.Id, DummyThing] | DummyTruthSourceError:
-        return next(self._snapshots)
+        return await self._outputs.get()
 
 
 class MockTruthSourceErrorHandler(TruthSourceErrorHandler[DummyTruthSourceError]):
-    def __init__(
-        self,
-        futures: Iterator[asyncio.Future[DummyTruthSourceError]],
-    ) -> None:
-        self._futures = futures
+    def __init__(self, inputs: asyncio.Queue[DummyTruthSourceError]) -> None:
+        self._inputs = inputs
 
     def get_class(self) -> type[DummyTruthSourceError]:
         return DummyTruthSourceError
 
     async def run(self, error: DummyTruthSourceError) -> None:
-        next(self._futures).set_result(error)
+        await self._inputs.put(error)
 
 
 class MockActionExecutor(ActionExecutor[DummyThing]):
     def __init__(
-        self,
-        futures: Iterator[asyncio.Future[dict[DummyThing.Id, Operation[DummyThing]]]],
+        self, inputs: asyncio.Queue[dict[DummyThing.Id, Operation[DummyThing]]]
     ) -> None:
-        self._futures = futures
+        self._inputs = inputs
 
     async def run(self, operations: dict[DummyThing.Id, Operation[DummyThing]]) -> None:
-        next(self._futures).set_result(operations)
+        await self._inputs.put(operations)
 
 
 class FakeSnapshotManager(SnapshotManager[DummyThing]):
-    def __init__(self, snapshot: dict[DummyThing.Id, DummyThing]):
+    def __init__(
+        self,
+        snapshot: dict[DummyThing.Id, DummyThing],
+        outputs: asyncio.Queue[dict[DummyThing.Id, Operation[DummyThing]]],
+    ) -> None:
         self._snapshot = snapshot
+        self._outputs = outputs
 
     async def run(
         self, snapshot: dict[DummyThing.Id, DummyThing]
@@ -89,15 +89,16 @@ class FakeSnapshotManager(SnapshotManager[DummyThing]):
             operations[id_] = CreateOperation(snapshot[id_])
             self._snapshot[id_] = snapshot[id_]
 
+        await self._outputs.put(operations)
         return operations
 
 
 class MockIntervalManager(IntervalManager):
-    def __init__(self, events: Iterator[asyncio.Event]) -> None:
-        self._events = events
+    def __init__(self, signals: asyncio.Queue[None]) -> None:
+        self._signals = signals
 
     async def run(self) -> None:
-        await next(self._events).wait()
+        await self._signals.get()
 
 
 @pytest.mark.asyncio
@@ -131,74 +132,45 @@ async def test_core() -> None:
         {"1": DummyThing(value="x"), "6": DummyThing(value="f")},
     ]
 
-    # Derived from the evolution of the DummyThing population above, None means error
-    operations_history: list[dict[DummyThing.Id, Operation[DummyThing]] | None] = [
-        {
-            "2": DeleteOperation(DummyThing(value="b")),
-            "4": CreateOperation(DummyThing(value="d")),
-        },
-        {
-            "1": UpdateOperation(
-                before=DummyThing(value="a"),
-                after=DummyThing(value="x"),
-            ),
-            "3": UpdateOperation(
-                before=DummyThing(value="c"),
-                after=DummyThing(value="y"),
-            ),
-        },
-        {},
-        {
-            "3": DeleteOperation(DummyThing(value="y")),
-            "4": DeleteOperation(DummyThing(value="d")),
-        },
-        None,
-        {
-            "6": CreateOperation(DummyThing(value="f")),
-        },
-    ]
-
-    interval_events = [asyncio.Event() for i in range(len(truth_source_results))]
-
-    truth_source_error_handler_futures: list[asyncio.Future[DummyTruthSourceError]] = [
-        asyncio.Future()
-        for truth_source_result in truth_source_results
-        if isinstance(truth_source_result, DummyTruthSourceError)
-    ]
-    action_executor_futures: list[
-        asyncio.Future[dict[DummyThing.Id, Operation[DummyThing]]]
-    ] = [
-        asyncio.Future()
-        for operations in operations_history
-        if operations is not None and len(operations) > 0
-    ]
+    truth_source_fetcher_outputs: asyncio.Queue[
+        dict[DummyThing.Id, DummyThing] | DummyTruthSourceError
+    ] = asyncio.Queue()
+    snapshot_manager_outputs: asyncio.Queue[
+        dict[DummyThing.Id, Operation[DummyThing]]
+    ] = asyncio.Queue()
+    action_executor_inputs: asyncio.Queue[
+        dict[DummyThing.Id, Operation[DummyThing]]
+    ] = asyncio.Queue()
+    truth_source_error_handler_inputs: asyncio.Queue[DummyTruthSourceError] = (
+        asyncio.Queue()
+    )
+    interval_manager_signals: asyncio.Queue[None] = asyncio.Queue()
 
     meerkat = Meerkat(
-        truth_source_fetcher=MockTruthSourceFetcher(iter(truth_source_results)),
+        truth_source_fetcher=MockTruthSourceFetcher(truth_source_fetcher_outputs),
         truth_source_error_handler=MockTruthSourceErrorHandler(
-            iter(truth_source_error_handler_futures)
+            truth_source_error_handler_inputs
         ),
-        snapshot_manager=FakeSnapshotManager(snapshot),
-        action_executor=MockActionExecutor(iter(action_executor_futures)),
-        interval_manager=MockIntervalManager(iter(interval_events)),
+        snapshot_manager=FakeSnapshotManager(snapshot, snapshot_manager_outputs),
+        action_executor=MockActionExecutor(action_executor_inputs),
+        interval_manager=MockIntervalManager(interval_manager_signals),
     )
 
     asyncio.create_task(meerkat.run())
 
-    truth_source_error_handler_future_iter = iter(truth_source_error_handler_futures)
-    action_executor_future_iter = iter(action_executor_futures)
-    for truth_source_result, operations, interval_event in zip(
-        truth_source_results, operations_history, interval_events
-    ):
+    for truth_source_result in truth_source_results:
+        await truth_source_fetcher_outputs.put(truth_source_result)
         if isinstance(truth_source_result, dict):
-            assert isinstance(operations, dict)  # Test data sanity check
-            if len(operations) > 0:
-                action_executor_input = await next(action_executor_future_iter)
-                assert action_executor_input == operations
+            snapshot_manager_output = await snapshot_manager_outputs.get()
+            if len(snapshot_manager_output) > 0:
+                action_executor_input = await action_executor_inputs.get()
+                assert action_executor_input == snapshot_manager_output
         elif isinstance(truth_source_result, DummyTruthSourceError):
-            assert operations is None  # Test data sanity check
-            truth_source_error_handler_input = await next(
-                truth_source_error_handler_future_iter
+            truth_source_error_handler_input = (
+                await truth_source_error_handler_inputs.get()
             )
             assert truth_source_error_handler_input == truth_source_result
-        interval_event.set()
+        await interval_manager_signals.put(None)
+
+    assert action_executor_inputs.empty()
+    assert truth_source_error_handler_inputs.empty()
