@@ -398,12 +398,14 @@ class Meerkat(Generic[T, TSE_covariant]):
         self._action_executor = action_executor
         self._interval_manager = interval_manager
 
-    async def run(self) -> None:
+    async def run(self, end_event: asyncio.Event) -> None:
         """
         Monitor the configured truth source and track things from it, executing actions
         upon changes.
+
+        :param end_event: Event to end the monitoring session.
         """
-        while True:
+        while not end_event.is_set():
             await self._peek()
             await self._interval_manager.run()
 

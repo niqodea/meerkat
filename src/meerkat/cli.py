@@ -49,9 +49,9 @@ class CanonicalModeDisabler:
         termios.tcsetattr(self._stdin_fd, termios.TCSADRAIN, self._original_settings)
 
 
-class ClearScreenListener:
+class KeyController:
     """
-    Listens for CTRL+L and sends the escape codes to clear the screen.
+    Listens for keys and performs actions on them.
     """
 
     def __init__(
@@ -62,28 +62,29 @@ class ClearScreenListener:
         self._stdin = stdin
         self._canonical_mode_disabler = canonical_mode_disabler
 
-    async def run(self) -> None:
+    async def run(self, shutdown_event: asyncio.Event) -> None:
         with self._canonical_mode_disabler:
-            try:
-                while True:
-                    if await self._stdin.read(1) == self.TRIGGER:
-                        print(self.ESCAPE_CODES, end="", flush=True)
-            except asyncio.CancelledError:
-                pass
+            while not shutdown_event.is_set():
+                if await self._stdin.read(1) == self.SHUTDOWN_TRIGGER:
+                    shutdown_event.set()
+                if await self._stdin.read(1) == self.CLEAR_SCREEN_TRIGGER:
+                    print(self.CLEAR_SCREEN_ESCAPE_CODES, end="", flush=True)
 
-    TRIGGER = b"\x0c"  # CTRL+L
-    ESCAPE_CODES = "\033[H\033[J"  # move cursor to top left + clear screen
+    SHUTDOWN_TRIGGER = b"\x04"  # CTRL+D
+
+    CLEAR_SCREEN_TRIGGER = b"\x0c"  # CTRL+L
+    CLEAR_SCREEN_ESCAPE_CODES = "\033[H\033[J"  # move cursor to top left + clear screen
 
     @staticmethod
-    async def create() -> ClearScreenListener:
+    async def create() -> KeyController:
         """
-        Create an instance of ClearScreenListener for stdin/stdout.
+        Create an instance of KeyController for stdin/stdout.
 
         :return: Created instance.
         """
         stdin, _ = await aioconsole.get_standard_streams()
         stdin_fd = sys.stdin.fileno()
-        return ClearScreenListener(
+        return KeyController(
             stdin=stdin,
             canonical_mode_disabler=CanonicalModeDisabler(stdin_fd=stdin_fd),
         )
@@ -97,22 +98,23 @@ class CliDeployer:
     def __init__(
         self,
         meerkats: list[Meerkat],
-        clear_screen_listener: ClearScreenListener,
+        key_controller: KeyController,
     ) -> None:
         """
         :param meerkats: Meerkats to run.
         :param clear_screen_listener: Key listener for clearing terminal screen.
         """
         self._meerkats = meerkats
-        self._clear_screen_listener = clear_screen_listener
+        self._key_controller = key_controller
 
     async def run(self) -> None:
         """
         Deploy the configured CLI environment.
         """
+        shutdown_event = asyncio.Event()
         await asyncio.gather(
-            *[meerkat.run() for meerkat in self._meerkats],
-            self._clear_screen_listener.run(),
+            *[meerkat.run(end_event=shutdown_event) for meerkat in self._meerkats],
+            self._key_controller.run(shutdown_event=shutdown_event),
         )
 
     @dataclass
@@ -171,9 +173,9 @@ class CliDeployer:
             )
             meerkats.append(meerkat)
 
-        clear_screen_listener = await ClearScreenListener.create()
+        key_controller = await KeyController.create()
 
         return CliDeployer(
             meerkats=meerkats,
-            clear_screen_listener=clear_screen_listener,
+            key_controller=key_controller,
         )

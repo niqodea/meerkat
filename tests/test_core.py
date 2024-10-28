@@ -156,7 +156,8 @@ async def test_core() -> None:
         interval_manager=MockIntervalManager(interval_manager_signals),
     )
 
-    asyncio.create_task(meerkat.run())
+    end_event = asyncio.Event()
+    task = asyncio.create_task(meerkat.run(end_event))
 
     for truth_source_result in truth_source_results:
         await truth_source_fetcher_outputs.put(truth_source_result)
@@ -174,3 +175,6 @@ async def test_core() -> None:
 
     assert action_executor_inputs.empty()
     assert truth_source_error_handler_inputs.empty()
+
+    end_event.set()
+    await task
