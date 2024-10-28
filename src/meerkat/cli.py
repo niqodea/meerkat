@@ -28,6 +28,9 @@ class CanonicalModeDisabler:
     """
 
     def __init__(self, stdin_fd: int) -> None:
+        """
+        :param stdin_fd: File descriptor of the stdin stream.
+        """
         self._stdin_fd = stdin_fd
 
     def __enter__(self) -> Self:
@@ -59,10 +62,19 @@ class KeyController:
         stdin: asyncio.StreamReader,
         canonical_mode_disabler: CanonicalModeDisabler,
     ) -> None:
+        """
+        :param stdin: Stdin stream.
+        :param canonical_mode_disabler: Disabler of canonical mode in the terminal.
+        """
         self._stdin = stdin
         self._canonical_mode_disabler = canonical_mode_disabler
 
     async def run(self, shutdown_event: asyncio.Event) -> None:
+        """
+        Listen for keys and perform actions on them.
+
+        :param shutdown_event: Event to set when shutdown is requested.
+        """
         with self._canonical_mode_disabler:
             while True:
                 match await self._stdin.read(1):
