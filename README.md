@@ -8,7 +8,7 @@ Just as meerkats in nature keep vigilant watch over their surroundings, this lib
 Using `pip`:
 
 ```sh
-pip install git+https://github.com/niqodea/meerkat.git@v0.1.0
+pip install git+https://github.com/niqodea/meerkat.git@v0.2.0
 ```
 
 ## Core Concepts

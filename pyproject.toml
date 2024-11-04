@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "meerkat"
-version = "0.1.0"
+version = "0.2.0"
 description = "Monitor things and react to changes swiftly"
 authors = ["Nicola De Angeli <112023843+niqodea@users.noreply.github.com>"]
 license = "MIT"
