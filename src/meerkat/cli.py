@@ -149,22 +149,22 @@ class LoggingFetchErrorHandler(FetchErrorHandler[FE]):
 
     def __init__(
         self,
-        domain_name: str,
+        data_source: str,
         stringifier: Callable[[FE], str],
         logger: Logger,
     ) -> None:
         """
-        :param domain_name: Name of the domain of things.
+        :param data_source: Name of the data source to fetch from.
         :param stringifier: Stringifier to use to convert errors to strings.
         :param logger: Logger to use.
         """
-        self._domain_name = domain_name
+        self._data_source = data_source
         self._stringifier = stringifier
         self._logger = logger
 
     async def run(self, error: FE) -> None:
         await self._logger.error(
-            f"{self.RED}Error for {self._domain_name}{self.RESET}\n"
+            f"{self.RED}Error for {self._data_source}{self.RESET}\n"
             f"{self._stringifier(error)}"
         )
 
@@ -179,23 +179,23 @@ class LoggingActionExecutor(ActionExecutor[T]):
 
     def __init__(
         self,
-        domain_name: str,
+        data_source: str,
         stringifier: Callable[[T], str],
         logger: Logger,
     ) -> None:
         """
-        :param domain_name: Name of the domain of things.
+        :param data_source: Name of the data source to fetch from.
         :param stringifier: Stringifier to use to convert things to strings.
         :param logger: Logger to use.
         """
-        self._domain_name = domain_name
+        self._data_source = data_source
         self._stringifier = stringifier
         self._logger = logger
 
     async def run(self, operations: dict[Thing.Id, Operation[T]]) -> None:
         timestamp = datetime.now().isoformat(sep=" ", timespec="seconds")
         await self._logger.info(
-            f"{self.GREEN}Changes for {self._domain_name} [{timestamp}]{self.RESET}"
+            f"{self.GREEN}Changes for {self._data_source} [{timestamp}]{self.RESET}"
         )
 
         create_operations: dict[Thing.Id, CreateOperation] = {
@@ -290,17 +290,17 @@ class CliDeployer:
         Create an instance of CliDeployer.
 
         :param meerkat_specs: Specifications of the meerkats to run, indexed by the
-            name of the domain of things each meerkat operates in.
+            name of the data source each meerkat monitors.
         :return: Created instance.
         """
         logger = Logger.with_default_handlers(name="meerkat")
 
         meerkats = []
-        for domain_name, spec in meerkat_specs.items():
+        for data_source, spec in meerkat_specs.items():
             meerkat: Meerkat = Meerkat(
                 fetcher=SafeFetcher(base=spec.fetcher),
                 fetch_error_handler=LoggingFetchErrorHandler(
-                    domain_name=domain_name,
+                    data_source=data_source,
                     stringifier=lambda error: error.message,
                     logger=logger,
                 ),
@@ -309,7 +309,7 @@ class CliDeployer:
                     path=spec.snapshot_path,
                 ),
                 action_executor=LoggingActionExecutor(
-                    domain_name=domain_name,
+                    data_source=data_source,
                     stringifier=spec.stringifier,
                     logger=logger,
                 ),

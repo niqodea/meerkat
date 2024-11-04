@@ -73,12 +73,14 @@ The module automatically handles everything else with sensible defaults.
 from meerkat.cli import CliDeployer
 
 specs = {
-    "domain-name": CliDeployer.MeerkatSpec(
+    "data-source-name": CliDeployer.MeerkatSpec(
         fetcher=your_fetcher,
         stringifier=lambda x: str(x),  # How to convert things to strings
         snapshot_path=Path("./snapshots"),  # Where to store state
         interval_seconds=60  # How often to check for changes
-    )
+    ),
+    # Add meerkat specs for other data sources here
+    # Each meerkat will operate independently and report to the same terminal
 }
 
 deployer = await CliDeployer.create(specs)
