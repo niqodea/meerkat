@@ -7,14 +7,14 @@ from meerkat.core import (
     ActionExecutor,
     CreateOperation,
     DeleteOperation,
+    Fetcher,
+    FetchError,
+    FetchErrorHandler,
     IntervalManager,
     Meerkat,
     Operation,
     SnapshotManager,
     Thing,
-    TruthSourceError,
-    TruthSourceErrorHandler,
-    TruthSourceFetcher,
     UpdateOperation,
 )
 
@@ -25,32 +25,32 @@ class DummyThing(Thing):
 
 
 @dataclass
-class DummyTruthSourceError(TruthSourceError):
+class DummyFetchError(FetchError):
     message: str
 
 
-class MockTruthSourceFetcher(TruthSourceFetcher[DummyThing, DummyTruthSourceError]):
+class MockFetcher(Fetcher[DummyThing, DummyFetchError]):
     def __init__(
         self,
-        outputs: asyncio.Queue[dict[DummyThing.Id, DummyThing] | DummyTruthSourceError],
+        outputs: asyncio.Queue[dict[DummyThing.Id, DummyThing] | DummyFetchError],
     ):
         self._outputs = outputs
 
     def get_class(self) -> type[DummyThing]:
         return DummyThing
 
-    async def run(self) -> dict[DummyThing.Id, DummyThing] | DummyTruthSourceError:
+    async def run(self) -> dict[DummyThing.Id, DummyThing] | DummyFetchError:
         return await self._outputs.get()
 
 
-class MockTruthSourceErrorHandler(TruthSourceErrorHandler[DummyTruthSourceError]):
-    def __init__(self, inputs: asyncio.Queue[DummyTruthSourceError]) -> None:
+class MockFetchErrorHandler(FetchErrorHandler[DummyFetchError]):
+    def __init__(self, inputs: asyncio.Queue[DummyFetchError]) -> None:
         self._inputs = inputs
 
-    def get_class(self) -> type[DummyTruthSourceError]:
-        return DummyTruthSourceError
+    def get_class(self) -> type[DummyFetchError]:
+        return DummyFetchError
 
-    async def run(self, error: DummyTruthSourceError) -> None:
+    async def run(self, error: DummyFetchError) -> None:
         self._inputs.put_nowait(error)
 
 
@@ -114,9 +114,7 @@ async def test_core() -> None:
         "3": DummyThing(value="c"),
     }
 
-    truth_source_results: list[
-        dict[DummyThing.Id, DummyThing] | DummyTruthSourceError
-    ] = [
+    fetch_results: list[dict[DummyThing.Id, DummyThing] | DummyFetchError] = [
         {
             "1": DummyThing(value="a"),
             "3": DummyThing(value="c"),
@@ -133,12 +131,12 @@ async def test_core() -> None:
             "4": DummyThing(value="d"),
         },
         {"1": DummyThing(value="x")},
-        DummyTruthSourceError("abc"),
+        DummyFetchError("abc"),
         {"1": DummyThing(value="x"), "6": DummyThing(value="f")},
     ]
 
-    truth_source_fetcher_outputs: asyncio.Queue[
-        dict[DummyThing.Id, DummyThing] | DummyTruthSourceError
+    fetcher_outputs: asyncio.Queue[
+        dict[DummyThing.Id, DummyThing] | DummyFetchError
     ] = asyncio.Queue()
     snapshot_manager_outputs: asyncio.Queue[
         dict[DummyThing.Id, Operation[DummyThing]]
@@ -146,16 +144,12 @@ async def test_core() -> None:
     action_executor_inputs: asyncio.Queue[
         dict[DummyThing.Id, Operation[DummyThing]]
     ] = asyncio.Queue()
-    truth_source_error_handler_inputs: asyncio.Queue[DummyTruthSourceError] = (
-        asyncio.Queue()
-    )
+    fetch_error_handler_inputs: asyncio.Queue[DummyFetchError] = asyncio.Queue()
     interval_manager_events: asyncio.Queue[asyncio.Event] = asyncio.Queue()
 
     meerkat = Meerkat(
-        truth_source_fetcher=MockTruthSourceFetcher(truth_source_fetcher_outputs),
-        truth_source_error_handler=MockTruthSourceErrorHandler(
-            truth_source_error_handler_inputs
-        ),
+        fetcher=MockFetcher(fetcher_outputs),
+        fetch_error_handler=MockFetchErrorHandler(fetch_error_handler_inputs),
         snapshot_manager=FakeSnapshotManager(snapshot, snapshot_manager_outputs),
         action_executor=MockActionExecutor(action_executor_inputs),
         interval_manager=FakeIntervalManager(interval_manager_events),
@@ -164,24 +158,22 @@ async def test_core() -> None:
     end_event = asyncio.Event()
     task = asyncio.create_task(meerkat.run(end_event))
 
-    for truth_source_result in truth_source_results:
-        truth_source_fetcher_outputs.put_nowait(truth_source_result)
-        if isinstance(truth_source_result, dict):
+    for fetch_result in fetch_results:
+        fetcher_outputs.put_nowait(fetch_result)
+        if isinstance(fetch_result, dict):
             snapshot_manager_output = await snapshot_manager_outputs.get()
             if len(snapshot_manager_output) > 0:
                 action_executor_input = await action_executor_inputs.get()
                 assert action_executor_input == snapshot_manager_output
-        elif isinstance(truth_source_result, DummyTruthSourceError):
-            truth_source_error_handler_input = (
-                await truth_source_error_handler_inputs.get()
-            )
-            assert truth_source_error_handler_input == truth_source_result
+        elif isinstance(fetch_result, DummyFetchError):
+            fetch_error_handler_input = await fetch_error_handler_inputs.get()
+            assert fetch_error_handler_input == fetch_result
         interval_manager_event = asyncio.Event()
         interval_manager_events.put_nowait(interval_manager_event)
         interval_manager_event.set()
 
     assert action_executor_inputs.empty()
-    assert truth_source_error_handler_inputs.empty()
+    assert fetch_error_handler_inputs.empty()
 
     end_event.set()
     await task

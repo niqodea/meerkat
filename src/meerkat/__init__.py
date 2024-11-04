@@ -1,11 +1,11 @@
 from meerkat.core import (
     ActionExecutor,
-    BaseTruthSourceError,
+    BaseFetchError,
     CreateOperation,
     DeleteOperation,
+    Fetcher,
     Meerkat,
     Operation,
     Thing,
-    TruthSourceFetcher,
     UpdateOperation,
 )

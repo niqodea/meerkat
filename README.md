@@ -13,25 +13,35 @@ pip install git+https://github.com/niqodea/meerkat.git@v0.1.0
 
 ## Core Concepts
 
+### Thing
+
+`Thing` is the base dataclass that you can extend to represent items you want to monitor.
+For example, if you're monitoring academic papers, you might create a `Paper` class that extends `Thing` with fields like `title`, `authors`, and `citations`.
+Each `Thing` must have a unique identifier that allows the system to track it over time.
+
+### Data source
+
+A data source is any collection of `Thing` objects you want to monitor.
+The library is flexible and can work with any data source that can be represented as a dictionary of these uniquely identified items.
+
 ### Meerkat
 
-A meerkat (`Meerkat`) is the main orchestrator that monitors a truth source for changes. It periodically:
-1. Fetches data from the truth source
+A meerkat (`Meerkat`) is the main orchestrator that monitors a data source for changes. It periodically:
+1. Fetches data from the data source
 2. Tracks changes by comparing against the previous state
 3. Executes actions in response to detected changes
 
-### Truth Source & Fetchers
+### Fetcher
 
-A truth source is any data source you want to monitor. The library is flexible and can work with any data source that can be represented as a dictionary of items with unique IDs.
+A fetcher (`Fetcher`) is responsible for:
 
-Truth source fetchers (`TruthSourceFetcher`) are responsible for:
-* Fetching data from the truth source
+* Fetching data from the data source
 * Converting the data into a dictionary of `Thing` objects (items that can be monitored)
-* Handling any errors that occur during fetching
+* Communicating errors that occur during fetching
 
 ### Snapshot Manager
 
-The snapshot manager (`SnapshotManager`) is responsible for:
+A snapshot manager (`SnapshotManager`) is responsible for:
 * Tracking the current state of monitored items
 * Detecting changes by comparing against the previous state
 * Computing operations (Create, Update, Delete) based on the differences
@@ -40,7 +50,8 @@ The base implementation (`BaseSnapshotManager`) stores snapshots as JSON files o
 
 ### Action Executor
 
-Action executors (`ActionExecutor`) define what happens when changes are detected. They receive a dictionary of operations (Create/Update/Delete) and can perform any desired actions in response.
+An action executor (`ActionExecutor`) defines what happens when changes are detected.
+It receives a dictionary of operations (Create/Update/Delete) and can perform any desired actions in response.
 
 The base implementation (`BaseActionExecutor`) logs changes as text.
 
@@ -48,7 +59,7 @@ The base implementation (`BaseActionExecutor`) logs changes as text.
 
 The CLI module provides a convenient way to deploy meerkats that report changes to the terminal.
 One of its main advantages is simplicity, as you only need to provide the following to get started:
-* A truth source fetcher to get your data
+* A fetcher to get your data
 * A stringifier function to convert your items to human-readable text
 
 The module automatically handles everything else with sensible defaults:
@@ -69,7 +80,7 @@ from meerkat.cli import CliDeployer
 
 specs = {
     "domain-name": CliDeployer.MeerkatSpec(
-        truth_source_fetcher=your_fetcher,
+        fetcher=your_fetcher,
         stringifier=lambda x: str(x),  # How to convert things to strings
         snapshot_path=Path("./snapshots"),  # Where to store state
         interval_seconds=60  # How often to check for changes

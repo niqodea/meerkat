@@ -12,16 +12,16 @@ from aiologger import Logger
 from aiopath import Path
 
 from meerkat.core import (
-    TSE,
+    FE,
     BaseActionExecutor,
+    BaseFetchError,
+    BaseFetchErrorHandler,
     BaseIntervalManager,
     BaseSnapshotManager,
-    BaseTruthSourceError,
-    BaseTruthSourceErrorHandler,
+    Fetcher,
     Meerkat,
     T,
     Thing,
-    TruthSourceFetcher,
 )
 
 
@@ -108,14 +108,14 @@ class KeyController:
         )
 
 
-class SafeTruthSourceFetcher(TruthSourceFetcher[T, BaseTruthSourceError]):
+class SafeFetcher(Fetcher[T, BaseFetchError]):
     """
-    Fetches things from a truth source without raising exceptions.
+    Fetches things from a data source without raising exceptions.
     """
 
-    def __init__(self, base: TruthSourceFetcher[T, BaseTruthSourceError]) -> None:
+    def __init__(self, base: Fetcher[T, BaseFetchError]) -> None:
         """
-        :param base: Base truth source fetcher.
+        :param base: Base data source fetcher.
         """
         self._base = base
 
@@ -125,16 +125,16 @@ class SafeTruthSourceFetcher(TruthSourceFetcher[T, BaseTruthSourceError]):
         """
         return self._base.get_class()
 
-    async def run(self) -> dict[Thing.Id, T] | BaseTruthSourceError:
+    async def run(self) -> dict[Thing.Id, T] | BaseFetchError:
         """
-        Fetches data from the truth source.
+        Fetches data from the data source.
 
-        :return: Things fetched from the truth source or an error.
+        :return: Things fetched from the data source or an error.
         """
         try:
             return await self._base.run()
         except Exception:
-            return BaseTruthSourceError(message=traceback.format_exc())
+            return BaseFetchError(message=traceback.format_exc())
 
 
 class CliDeployer:
@@ -165,14 +165,14 @@ class CliDeployer:
         )
 
     @dataclass
-    class MeerkatSpec(Generic[T, TSE]):
+    class MeerkatSpec(Generic[T, FE]):
         """
         Specification of a meerkat to run.
         """
 
-        truth_source_fetcher: TruthSourceFetcher[T, TSE]
+        fetcher: Fetcher[T, FE]
         """
-        Fetcher for the truth source.
+        Fetcher for the data source.
         """
         stringifier: Callable[[T], str]
         """
@@ -201,14 +201,12 @@ class CliDeployer:
         meerkats = []
         for domain_name, spec in meerkat_specs.items():
             meerkat: Meerkat = Meerkat(
-                truth_source_fetcher=SafeTruthSourceFetcher(
-                    base=spec.truth_source_fetcher
-                ),
-                truth_source_error_handler=BaseTruthSourceErrorHandler(
+                fetcher=SafeFetcher(base=spec.fetcher),
+                fetch_error_handler=BaseFetchErrorHandler(
                     domain_name=domain_name, logger=logger
                 ),
                 snapshot_manager=await BaseSnapshotManager.create(
-                    class_=spec.truth_source_fetcher.get_class(),
+                    class_=spec.fetcher.get_class(),
                     path=spec.snapshot_path,
                 ),
                 action_executor=BaseActionExecutor(

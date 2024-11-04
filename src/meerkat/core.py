@@ -76,22 +76,22 @@ class UpdateOperation(Operation[T]):
 
 
 @dataclass
-class TruthSourceError:
+class FetchError:
     """
-    Represents an error from a truth source.
+    Represents a data source fetch error.
     """
 
 
-TSE = TypeVar("TSE", bound=TruthSourceError)
-TSE_covariant = TypeVar("TSE_covariant", bound=TruthSourceError, covariant=True)
+FE = TypeVar("FE", bound=FetchError)
+FE_covariant = TypeVar("FE_covariant", bound=FetchError, covariant=True)
 
 # --------------------------------------------------------------------------------------
 # Protocols
 
 
-class TruthSourceFetcher(Protocol[T_covariant, TSE_covariant]):
+class Fetcher(Protocol[T_covariant, FE_covariant]):
     """
-    Fetches things from a truth source.
+    Fetches things from a data source.
     """
 
     def get_class(self) -> type[T_covariant]:
@@ -99,29 +99,29 @@ class TruthSourceFetcher(Protocol[T_covariant, TSE_covariant]):
         :return: Type of things fetched by this fetcher.
         """
 
-    async def run(self) -> dict[Thing.Id, T_covariant] | TSE_covariant:
+    async def run(self) -> dict[Thing.Id, T_covariant] | FE_covariant:
         """
-        Fetches data from the truth source.
+        Fetches data from the data source.
 
-        :return: Things fetched from the truth source or an error.
+        :return: Things fetched from the data source or a fetch error.
         """
 
 
-class TruthSourceErrorHandler(Protocol[TSE]):
+class FetchErrorHandler(Protocol[FE]):
     """
-    Handles truth source errors.
+    Handles fetch errors.
     """
 
-    def get_class(self) -> type[TSE]:
+    def get_class(self) -> type[FE]:
         """
-        :return: Type of truth source errors handled by this handler.
+        :return: Type of fetch errors handled by this handler.
         """
 
-    async def run(self, error: TSE) -> None:
+    async def run(self, error: FE) -> None:
         """
-        Handles a truth source error.
+        Handles a fetch error.
 
-        :param error: Truth source error.
+        :param error: Fetch error to handle.
         """
 
 
@@ -171,9 +171,9 @@ class IntervalManager(Protocol):
 
 
 @dataclass
-class BaseTruthSourceError(TruthSourceError):
+class BaseFetchError(FetchError):
     """
-    Simple truth source error.
+    Simple fetch error.
     """
 
     message: str
@@ -182,9 +182,9 @@ class BaseTruthSourceError(TruthSourceError):
     """
 
 
-class BaseTruthSourceErrorHandler(TruthSourceErrorHandler[BaseTruthSourceError]):
+class BaseFetchErrorHandler(FetchErrorHandler[BaseFetchError]):
     """
-    Logs truth source errors as text.
+    Logs fetch errors as text.
     """
 
     def __init__(self, domain_name: str, logger: Logger) -> None:
@@ -195,10 +195,10 @@ class BaseTruthSourceErrorHandler(TruthSourceErrorHandler[BaseTruthSourceError])
         self._domain_name = domain_name
         self._logger = logger
 
-    def get_class(self) -> type[BaseTruthSourceError]:
-        return BaseTruthSourceError
+    def get_class(self) -> type[BaseFetchError]:
+        return BaseFetchError
 
-    async def run(self, error: BaseTruthSourceError) -> None:
+    async def run(self, error: BaseFetchError) -> None:
         await self._logger.error(
             f"{self.RED}Error for {self._domain_name}: {error.message}{self.RESET}"
         )
@@ -380,35 +380,35 @@ class BaseIntervalManager(IntervalManager):
 # Core logic
 
 
-class Meerkat(Generic[T, TSE_covariant]):
+class Meerkat(Generic[T, FE_covariant]):
     """
-    Monitors a truth source and tracks things from it, executing actions upon changes.
+    Monitors a data source and tracks things from it, executing actions upon changes.
     """
 
     def __init__(
         self,
-        truth_source_fetcher: TruthSourceFetcher[T, TSE_covariant],
-        truth_source_error_handler: TruthSourceErrorHandler[TSE_covariant],
+        fetcher: Fetcher[T, FE_covariant],
+        fetch_error_handler: FetchErrorHandler[FE_covariant],
         snapshot_manager: SnapshotManager[T],
         action_executor: ActionExecutor[T],
         interval_manager: IntervalManager,
     ) -> None:
         """
-        :param truth_source_fetcher: Fetcher for the truth source.
-        :param truth_source_error_handler: Error handler for the truth source.
+        :param fetcher: Fetcher for the data source.
+        :param fetch_error_handler: Handler for fetch errors.
         :param snapshot_manager: Tracker of fetched things and detector of changes.
         :param action_executor: Executor of actions upon changes.
         :param interval_manager: Manager for intervals between monitoring sessions.
         """
-        self._truth_source_fetcher = truth_source_fetcher
-        self._truth_source_error_handler = truth_source_error_handler
+        self._fetcher = fetcher
+        self._fetch_error_handler = fetch_error_handler
         self._snapshot_manager = snapshot_manager
         self._action_executor = action_executor
         self._interval_manager = interval_manager
 
     async def run(self, end_event: asyncio.Event) -> None:
         """
-        Monitor the configured truth source and track things from it, executing actions
+        Monitor the configured data source and track things from it, executing actions
         upon changes.
 
         :param end_event: Event to end the monitoring session.
@@ -419,13 +419,13 @@ class Meerkat(Generic[T, TSE_covariant]):
             await self._interval_manager.run(early_stop_signal=end_signal)
 
     async def _peek(self) -> None:
-        truth_source_result = await self._truth_source_fetcher.run()
+        fetch_result = await self._fetcher.run()
 
-        if isinstance(truth_source_result, TruthSourceError):
-            await self._truth_source_error_handler.run(truth_source_result)  # type: ignore[arg-type]
+        if isinstance(fetch_result, FetchError):
+            await self._fetch_error_handler.run(fetch_result)  # type: ignore[arg-type]
             return
 
-        snapshot = truth_source_result
+        snapshot = fetch_result
         operations = await self._snapshot_manager.run(snapshot)
 
         if len(operations) == 0:
