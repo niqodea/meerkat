@@ -163,8 +163,9 @@ class LoggingFetchErrorHandler(FetchErrorHandler[FE]):
         self._logger = logger
 
     async def run(self, error: FE) -> None:
+        timestamp = datetime.now().isoformat(sep=" ", timespec="seconds")
         await self._logger.error(
-            f"{self.RED}Error for {self._data_source}{self.RESET}\n"
+            f"{self.RED}Error for {self._data_source} [{timestamp}]{self.RESET}\n"
             f"{self._stringifier(error)}"
         )
 
