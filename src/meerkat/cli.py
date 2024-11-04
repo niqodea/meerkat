@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import sys
 import termios
+import traceback
 from dataclasses import dataclass
 from typing import Callable, Generic, Self
 
@@ -15,9 +16,11 @@ from meerkat.core import (
     BaseActionExecutor,
     BaseIntervalManager,
     BaseSnapshotManager,
+    BaseTruthSourceError,
     BaseTruthSourceErrorHandler,
     Meerkat,
     T,
+    Thing,
     TruthSourceFetcher,
 )
 
@@ -105,6 +108,35 @@ class KeyController:
         )
 
 
+class SafeTruthSourceFetcher(TruthSourceFetcher[T, BaseTruthSourceError]):
+    """
+    Fetches things from a truth source without raising exceptions.
+    """
+
+    def __init__(self, base: TruthSourceFetcher[T, BaseTruthSourceError]) -> None:
+        """
+        :param base: Base truth source fetcher.
+        """
+        self._base = base
+
+    def get_class(self) -> type[T]:
+        """
+        :return: Type of things fetched by this fetcher.
+        """
+        return self._base.get_class()
+
+    async def run(self) -> dict[Thing.Id, T] | BaseTruthSourceError:
+        """
+        Fetches data from the truth source.
+
+        :return: Things fetched from the truth source or an error.
+        """
+        try:
+            return await self._base.run()
+        except Exception:
+            return BaseTruthSourceError(message=traceback.format_exc())
+
+
 class CliDeployer:
     """
     Deploys a CLI environment with meerkats that report changes to stdout.
@@ -169,7 +201,9 @@ class CliDeployer:
         meerkats = []
         for domain_name, spec in meerkat_specs.items():
             meerkat: Meerkat = Meerkat(
-                truth_source_fetcher=spec.truth_source_fetcher,
+                truth_source_fetcher=SafeTruthSourceFetcher(
+                    base=spec.truth_source_fetcher
+                ),
                 truth_source_error_handler=BaseTruthSourceErrorHandler(
                     domain_name=domain_name, logger=logger
                 ),
