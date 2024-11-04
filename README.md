@@ -16,7 +16,7 @@ pip install git+https://github.com/niqodea/meerkat.git@v0.1.0
 ### Thing
 
 `Thing` is the base dataclass that you can extend to represent items you want to monitor.
-For example, if you're monitoring academic papers, you might create a `Paper` class that extends `Thing` with fields like `title`, `authors`, and `citations`.
+For example, if you're monitoring job postings, you might create a `Job` class that extends `Thing` with fields like `title`, `location`, and `url`.
 Each `Thing` must have a unique identifier that allows the system to track it over time.
 
 ### Data source
@@ -60,7 +60,7 @@ One of its main advantages is simplicity, as you only need to implement the foll
 * A fetcher to get your data
 * A stringifier function to convert your items to human-readable text
 
-The module automatically handles everything else with sensible defaults.
+The module automatically handles everything else with sensible default implementations.
 
 ### Terminal Controls
 
@@ -74,7 +74,7 @@ from meerkat.cli import CliDeployer
 
 specs = {
     "data-source-name": CliDeployer.MeerkatSpec(
-        fetcher=your_fetcher,
+        fetcher=YourFetcher(),
         stringifier=lambda x: str(x),  # How to convert things to strings
         snapshot_path=Path("./snapshots"),  # Where to store state
         interval_seconds=60  # How often to check for changes
