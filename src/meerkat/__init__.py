@@ -1,6 +1,6 @@
 from meerkat.core import (
     ActionExecutor,
-    BaseFetchError,
+    BasicFetchError,
     CreateOperation,
     DeleteOperation,
     Fetcher,

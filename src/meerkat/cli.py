@@ -12,13 +12,12 @@ from aiologger import Logger
 from aiopath import Path
 
 from meerkat.core import (
-    FE,
-    BaseActionExecutor,
-    BaseFetchError,
-    BaseFetchErrorHandler,
-    BaseIntervalManager,
-    BaseSnapshotManager,
+    BasicFetchError,
     Fetcher,
+    FixedTimeIntervalManager,
+    JsonSnapshotManager,
+    LoggingActionExecutor,
+    LoggingFetchErrorHandler,
     Meerkat,
     T,
     Thing,
@@ -108,12 +107,12 @@ class KeyController:
         )
 
 
-class SafeFetcher(Fetcher[T, BaseFetchError]):
+class SafeFetcher(Fetcher[T, BasicFetchError]):
     """
     Fetches things from a data source without raising exceptions.
     """
 
-    def __init__(self, base: Fetcher[T, BaseFetchError]) -> None:
+    def __init__(self, base: Fetcher[T, BasicFetchError]) -> None:
         """
         :param base: Base data source fetcher.
         """
@@ -125,7 +124,7 @@ class SafeFetcher(Fetcher[T, BaseFetchError]):
         """
         return self._base.get_class()
 
-    async def run(self) -> dict[Thing.Id, T] | BaseFetchError:
+    async def run(self) -> dict[Thing.Id, T] | BasicFetchError:
         """
         Fetches data from the data source.
 
@@ -134,7 +133,7 @@ class SafeFetcher(Fetcher[T, BaseFetchError]):
         try:
             return await self._base.run()
         except Exception:
-            return BaseFetchError(message=traceback.format_exc())
+            return BasicFetchError(message=traceback.format_exc())
 
 
 class CliDeployer:
@@ -165,12 +164,12 @@ class CliDeployer:
         )
 
     @dataclass
-    class MeerkatSpec(Generic[T, FE]):
+    class MeerkatSpec(Generic[T]):
         """
         Specification of a meerkat to run.
         """
 
-        fetcher: Fetcher[T, FE]
+        fetcher: Fetcher[T, BasicFetchError]
         """
         Fetcher for the data source.
         """
@@ -202,19 +201,21 @@ class CliDeployer:
         for domain_name, spec in meerkat_specs.items():
             meerkat: Meerkat = Meerkat(
                 fetcher=SafeFetcher(base=spec.fetcher),
-                fetch_error_handler=BaseFetchErrorHandler(
-                    domain_name=domain_name, logger=logger
+                fetch_error_handler=LoggingFetchErrorHandler(
+                    domain_name=domain_name,
+                    stringifier=lambda error: error.message,
+                    logger=logger,
                 ),
-                snapshot_manager=await BaseSnapshotManager.create(
+                snapshot_manager=await JsonSnapshotManager.create(
                     class_=spec.fetcher.get_class(),
                     path=spec.snapshot_path,
                 ),
-                action_executor=BaseActionExecutor(
+                action_executor=LoggingActionExecutor(
                     domain_name=domain_name,
                     stringifier=spec.stringifier,
                     logger=logger,
                 ),
-                interval_manager=BaseIntervalManager(
+                interval_manager=FixedTimeIntervalManager(
                     interval_seconds=spec.interval_seconds
                 ),
             )

@@ -46,27 +46,21 @@ A snapshot manager (`SnapshotManager`) is responsible for:
 * Detecting changes by comparing against the previous state
 * Computing operations (Create, Update, Delete) based on the differences
 
-The base implementation (`BaseSnapshotManager`) stores snapshots as JSON files on disk, making it easy to inspect the state with a text editor.
+The standard implementation (`JsonSnapshotManager`) stores snapshots as JSON files on disk, making it easy to inspect the state with a text editor.
 
 ### Action Executor
 
 An action executor (`ActionExecutor`) defines what happens when changes are detected.
 It receives a dictionary of operations (Create/Update/Delete) and can perform any desired actions in response.
 
-The base implementation (`BaseActionExecutor`) logs changes as text.
-
 ## CLI Module
 
 The CLI module provides a convenient way to deploy meerkats that report changes to the terminal.
-One of its main advantages is simplicity, as you only need to provide the following to get started:
+One of its main advantages is simplicity, as you only need to implement the following to get started:
 * A fetcher to get your data
 * A stringifier function to convert your items to human-readable text
 
-The module automatically handles everything else with sensible defaults:
-* Colored terminal output
-* File-based state management
-* Error logging
-* Terminal controls
+The module automatically handles everything else with sensible defaults.
 
 ### Terminal Controls
 

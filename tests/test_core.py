@@ -47,9 +47,6 @@ class MockFetchErrorHandler(FetchErrorHandler[DummyFetchError]):
     def __init__(self, inputs: asyncio.Queue[DummyFetchError]) -> None:
         self._inputs = inputs
 
-    def get_class(self) -> type[DummyFetchError]:
-        return DummyFetchError
-
     async def run(self, error: DummyFetchError) -> None:
         self._inputs.put_nowait(error)
 

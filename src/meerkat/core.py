@@ -83,6 +83,7 @@ class FetchError:
 
 
 FE = TypeVar("FE", bound=FetchError)
+FE_contravariant = TypeVar("FE_contravariant", bound=FetchError, contravariant=True)
 FE_covariant = TypeVar("FE_covariant", bound=FetchError, covariant=True)
 
 # --------------------------------------------------------------------------------------
@@ -107,17 +108,12 @@ class Fetcher(Protocol[T_covariant, FE_covariant]):
         """
 
 
-class FetchErrorHandler(Protocol[FE]):
+class FetchErrorHandler(Protocol[FE_contravariant]):
     """
     Handles fetch errors.
     """
 
-    def get_class(self) -> type[FE]:
-        """
-        :return: Type of fetch errors handled by this handler.
-        """
-
-    async def run(self, error: FE) -> None:
+    async def run(self, error: FE_contravariant) -> None:
         """
         Handles a fetch error.
 
@@ -167,11 +163,11 @@ class IntervalManager(Protocol):
 
 
 # --------------------------------------------------------------------------------------
-# Base implementations
+# Implementations
 
 
 @dataclass
-class BaseFetchError(FetchError):
+class BasicFetchError(FetchError):
     """
     Simple fetch error.
     """
@@ -182,32 +178,37 @@ class BaseFetchError(FetchError):
     """
 
 
-class BaseFetchErrorHandler(FetchErrorHandler[BaseFetchError]):
+class LoggingFetchErrorHandler(FetchErrorHandler[FE]):
     """
     Logs fetch errors as text.
     """
 
-    def __init__(self, domain_name: str, logger: Logger) -> None:
+    def __init__(
+        self,
+        domain_name: str,
+        stringifier: Callable[[FE], str],
+        logger: Logger,
+    ) -> None:
         """
         :param domain_name: Name of the domain of things.
+        :param stringifier: Stringifier to use to convert errors to strings.
         :param logger: Logger to use.
         """
         self._domain_name = domain_name
+        self._stringifier = stringifier
         self._logger = logger
 
-    def get_class(self) -> type[BaseFetchError]:
-        return BaseFetchError
-
-    async def run(self, error: BaseFetchError) -> None:
+    async def run(self, error: FE) -> None:
         await self._logger.error(
-            f"{self.RED}Error for {self._domain_name}: {error.message}{self.RESET}"
+            f"{self.RED}Error for {self._domain_name}{self.RESET}\n"
+            f"{self._stringifier(error)}"
         )
 
     RED = "\033[91m"
     RESET = "\033[0m"
 
 
-class BaseActionExecutor(ActionExecutor[T]):
+class LoggingActionExecutor(ActionExecutor[T]):
     """
     Logs operations over things as text.
     """
@@ -269,7 +270,7 @@ class BaseActionExecutor(ActionExecutor[T]):
     RESET = "\033[0m"
 
 
-class BaseSnapshotManager(SnapshotManager[T]):
+class JsonSnapshotManager(SnapshotManager[T]):
     """
     Tracks a snapshot of things on disk as JSON files.
     """
@@ -290,7 +291,7 @@ class BaseSnapshotManager(SnapshotManager[T]):
         self._ids = ids
 
     async def run(self, snapshot: dict[Thing.Id, T]) -> dict[Thing.Id, Operation[T]]:
-        marker_path = self._path / BaseSnapshotManager.MARKER_FILENAME
+        marker_path = self._path / JsonSnapshotManager.MARKER_FILENAME
         if not await marker_path.exists():
             raise ValueError("Marker file not found")
         await marker_path.write_text(datetime.now().isoformat(timespec="seconds"))
@@ -325,9 +326,9 @@ class BaseSnapshotManager(SnapshotManager[T]):
     MARKER_FILENAME = ".snapshot"
 
     @staticmethod
-    async def create(class_: type[T], path: Path) -> BaseSnapshotManager[T]:
+    async def create(class_: type[T], path: Path) -> JsonSnapshotManager[T]:
         """
-        Create an instance of BaseSnapshotManager.
+        Create an instance of JsonSnapshotManager.
 
         :param class_: Class of the things.
         :param path: Path to the directory where things are stored as JSON files.
@@ -336,7 +337,7 @@ class BaseSnapshotManager(SnapshotManager[T]):
         if not await path.is_dir():
             raise ValueError(f"Could not find directory: {path}")
 
-        marker_path = path / BaseSnapshotManager.MARKER_FILENAME
+        marker_path = path / JsonSnapshotManager.MARKER_FILENAME
 
         if not await marker_path.exists():
             # This is a hack to ensure that the directory is empty
@@ -348,14 +349,14 @@ class BaseSnapshotManager(SnapshotManager[T]):
         await marker_path.touch()
         ids = {p.stem async for p in path.glob("*.json")}
 
-        return BaseSnapshotManager(
+        return JsonSnapshotManager(
             class_=class_,
             path=path,
             ids=ids,
         )
 
 
-class BaseIntervalManager(IntervalManager):
+class FixedTimeIntervalManager(IntervalManager):
     """
     Manages fixed-time intervals.
     """
