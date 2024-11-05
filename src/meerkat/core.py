@@ -23,6 +23,7 @@ class Thing(JSONWizard):
 
 
 T = TypeVar("T", bound=Thing)
+T_contravariant = TypeVar("T_contravariant", bound=Thing, contravariant=True)
 T_covariant = TypeVar("T_covariant", bound=Thing, covariant=True)
 
 

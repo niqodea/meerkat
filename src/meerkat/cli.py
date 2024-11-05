@@ -6,7 +6,7 @@ import termios
 import traceback
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Callable, Generic, Self
+from typing import Generic, Protocol, Self
 
 import aioconsole
 from aiologger import Logger
@@ -18,6 +18,7 @@ from meerkat.core import (
     BasicFetchError,
     CreateOperation,
     DeleteOperation,
+    FE_contravariant,
     Fetcher,
     FetchErrorHandler,
     FixedTimeIntervalManager,
@@ -25,6 +26,7 @@ from meerkat.core import (
     Meerkat,
     Operation,
     T,
+    T_contravariant,
     Thing,
     UpdateOperation,
 )
@@ -113,64 +115,41 @@ class KeyController:
         )
 
 
-class SafeFetcher(Fetcher[T, BasicFetchError]):
+class Stringifier(Protocol[T_contravariant]):
     """
-    Fetches things from a data source without raising exceptions.
-    """
-
-    def __init__(self, base: Fetcher[T, BasicFetchError]) -> None:
-        """
-        :param base: Base data source fetcher.
-        """
-        self._base = base
-
-    def get_class(self) -> type[T]:
-        """
-        :return: Type of things fetched by this fetcher.
-        """
-        return self._base.get_class()
-
-    async def run(self) -> dict[Thing.Id, T] | BasicFetchError:
-        """
-        Fetches data from the data source.
-
-        :return: Things fetched from the data source or an error.
-        """
-        try:
-            return await self._base.run()
-        except Exception:
-            return BasicFetchError(message=traceback.format_exc())
-
-
-class LoggingFetchErrorHandler(FetchErrorHandler[FE]):
-    """
-    Logs fetch errors as text.
+    Converts things to strings.
     """
 
-    def __init__(
-        self,
-        data_source: str,
-        stringifier: Callable[[FE], str],
-        logger: Logger,
-    ) -> None:
+    def run(self, thing: T_contravariant) -> str:
         """
-        :param data_source: Name of the data source to fetch from.
-        :param stringifier: Stringifier to use to convert errors to strings.
-        :param logger: Logger to use.
+        Convert a thing to a string.
+
+        :param thing: Thing to convert.
+        :return: String representation of the thing.
         """
-        self._data_source = data_source
-        self._stringifier = stringifier
-        self._logger = logger
 
-    async def run(self, error: FE) -> None:
-        timestamp = datetime.now().isoformat(sep=" ", timespec="seconds")
-        await self._logger.error(
-            f"{self.RED}Error for {self._data_source} [{timestamp}]{self.RESET}\n"
-            f"{self._stringifier(error)}"
-        )
 
-    RED = "\033[91m"
-    RESET = "\033[0m"
+class FetchErrorStringifier(Protocol[FE_contravariant]):
+    """
+    Converts fetch errors to strings.
+    """
+
+    def run(self, error: FE_contravariant) -> str:
+        """
+        Convert a fetch error to a string.
+
+        :param error: Fetch error to convert.
+        :return: String representation of the error.
+        """
+
+
+class BasicFetchErrorStringifier(FetchErrorStringifier[BasicFetchError]):
+    """
+    Converts basic fetch errors to strings.
+    """
+
+    def run(self, error: BasicFetchError) -> str:
+        return error.message
 
 
 class LoggingActionExecutor(ActionExecutor[T]):
@@ -181,7 +160,7 @@ class LoggingActionExecutor(ActionExecutor[T]):
     def __init__(
         self,
         data_source: str,
-        stringifier: Callable[[T], str],
+        stringifier: Stringifier[T],
         logger: Logger,
     ) -> None:
         """
@@ -213,26 +192,86 @@ class LoggingActionExecutor(ActionExecutor[T]):
             await self._logger.info(f"{self.YELLOW}Created:{self.RESET}")
             for id_, create_operation in create_operations.items():
                 await self._logger.info(
-                    f"* {id_}\n" f"  {self._stringifier(create_operation.item)}"
+                    f"* {id_}\n" f"  {self._stringifier.run(create_operation.item)}"
                 )
         if len(delete_operations) > 0:
             await self._logger.info(f"{self.YELLOW}Deleted:{self.RESET}")
             for id_, delete_operation in delete_operations.items():
                 await self._logger.info(
-                    f"* {id_}\n" f"  {self._stringifier(delete_operation.item)}"
+                    f"* {id_}\n" f"  {self._stringifier.run(delete_operation.item)}"
                 )
         if len(update_operations) > 0:
             await self._logger.info(f"{self.YELLOW}Updated:{self.RESET}")
             for id_, update_operation in update_operations.items():
                 await self._logger.info(
                     f"* {id_}\n"
-                    f"  from: {self._stringifier(update_operation.before)}\n"
-                    f"  to:   {self._stringifier(update_operation.after)}"
+                    f"  from: {self._stringifier.run(update_operation.before)}\n"
+                    f"  to:   {self._stringifier.run(update_operation.after)}"
                 )
 
     GREEN = "\033[32m"
     YELLOW = "\033[33m"
     RESET = "\033[0m"
+
+
+class LoggingFetchErrorHandler(FetchErrorHandler[FE]):
+    """
+    Logs fetch errors as text.
+    """
+
+    def __init__(
+        self,
+        data_source: str,
+        stringifier: FetchErrorStringifier[FE],
+        logger: Logger,
+    ) -> None:
+        """
+        :param data_source: Name of the data source to fetch from.
+        :param stringifier: Stringifier to use to convert errors to strings.
+        :param logger: Logger to use.
+        """
+        self._data_source = data_source
+        self._stringifier = stringifier
+        self._logger = logger
+
+    async def run(self, error: FE) -> None:
+        timestamp = datetime.now().isoformat(sep=" ", timespec="seconds")
+        await self._logger.error(
+            f"{self.RED}Error for {self._data_source} [{timestamp}]{self.RESET}\n"
+            f"{self._stringifier.run(error)}"
+        )
+
+    RED = "\033[91m"
+    RESET = "\033[0m"
+
+
+class SafeFetcher(Fetcher[T, BasicFetchError]):
+    """
+    Fetches things from a data source without raising exceptions.
+    """
+
+    def __init__(self, base: Fetcher[T, BasicFetchError]) -> None:
+        """
+        :param base: Base data source fetcher.
+        """
+        self._base = base
+
+    def get_class(self) -> type[T]:
+        """
+        :return: Type of things fetched by this fetcher.
+        """
+        return self._base.get_class()
+
+    async def run(self) -> dict[Thing.Id, T] | BasicFetchError:
+        """
+        Fetches data from the data source.
+
+        :return: Things fetched from the data source or an error.
+        """
+        try:
+            return await self._base.run()
+        except Exception:
+            return BasicFetchError(message=traceback.format_exc())
 
 
 class CliDeployer:
@@ -272,7 +311,7 @@ class CliDeployer:
         """
         Fetcher for the data source.
         """
-        stringifier: Callable[[T], str]
+        stringifier: Stringifier[T]
         """
         Function to convert things to strings to display in stdout.
         """
@@ -302,7 +341,7 @@ class CliDeployer:
                 fetcher=SafeFetcher(base=spec.fetcher),
                 fetch_error_handler=LoggingFetchErrorHandler(
                     data_source=data_source,
-                    stringifier=lambda error: error.message,
+                    stringifier=BasicFetchErrorStringifier(),
                     logger=logger,
                 ),
                 snapshot_manager=await JsonSnapshotManager.create(
