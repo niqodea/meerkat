@@ -1,0 +1,40 @@
+[tool.poetry]
+name = "job-monitor"
+version = "0.1.0"
+description = ""
+authors = ["Nicola De Angeli <112023843+niqodea@users.noreply.github.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+
+meerkat = {path = "..meerkat", develop = true}
+
+aiohttp = "^3.10"
+beautifulsoup4 = "^4.12"
+requests = "^2.32"
+
+[tool.poetry.group.dev.dependencies]
+mypy = "^1.12"
+ruff = "^0.7"
+
+types-beautifulsoup4 = "^4.12"
+types-requests = "^2.32"
+
+[tool.ruff.lint]
+select = [
+  "B",  # flake8-bugbear
+  "E",  # pycodestyle
+  "F",  # Pyflakes
+  "I",  # isort
+  "SIM",  # flake8-simplify
+  "UP",  # pyupgrade
+]
+
+# Ignore unused imports in __init__.py files (would need __all__ otherwise)
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

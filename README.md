@@ -87,6 +87,11 @@ deployer = await CliDeployer.create(specs)
 await deployer.run()
 ```
 
+## Example: Job Monitor
+
+This repository also includes an example project called that demonstrates how to use Meerkat to monitor job postings from various sources.
+You can find it in the [`job-monitor`](./job-monitor) directory; just keep in mind, you’ll need to implement the job fetchers yourself!
+
 ## License
 
 Licensed under the MIT License. Check the [LICENSE](./LICENSE.md) file for details.
