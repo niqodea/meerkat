@@ -62,11 +62,6 @@ One of its main advantages is simplicity, as you only need to implement the foll
 
 The module automatically handles everything else with sensible default implementations.
 
-### Terminal Controls
-
-* `CTRL+L`: Clear the screen (useful after reading updates)
-* `CTRL+D`: Graceful shutdown
-
 ### Usage Example
 
 ```python
@@ -86,6 +81,36 @@ specs = {
 deployer = await CliDeployer.create(specs)
 await deployer.run()
 ```
+
+### Terminal Output Example
+
+When `CliDeployer` is running, you'll see changes printed to the terminal like this:
+
+```
+Changes for north-pole-workshop [1999-12-24 12:00:00]
+Created:
+* ELF-123
+   Title: 'Emergency Present Inspector', Location: 'Jingletown'
+* ELF-124
+   Title: 'Last-Minute Gift Wrapper', Location: 'Peppermint Port'
+Deleted:
+* ELF-111
+   Title: 'Coal Distribution Manager', Location: 'Kringle Quarry'
+Updated:
+* ELF-100
+   from: Title: 'Junior Reindeer Trainer', Location: 'Snowdrift Haven'
+   to:   Title: 'Senior Reindeer Trainer', Location: 'Snowdrift Haven'
+
+Error for y2k-industries [2000-01-01 00:00:00]
+Server responded with HTTP 500: "Date overflow - expected 19XX, got 19100"
+```
+
+Note that the actual output will also be colored, making it easier to read.
+
+### Terminal Controls
+
+* `CTRL+L`: Clear the screen (useful after reading changes)
+* `CTRL+D`: Graceful shutdown
 
 ## Example: Job Monitor
 
