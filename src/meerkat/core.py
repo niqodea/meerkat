@@ -42,7 +42,7 @@ class CreateOperation(Operation[T]):
 
     item: T
     """
-    The craeted thing.
+    The created thing.
     """
 
 
