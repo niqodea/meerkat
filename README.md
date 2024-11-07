@@ -114,7 +114,7 @@ Note that the actual output will also be colored, making it easier to read.
 
 ## Example: Job Monitor
 
-This repository also includes an example project called that demonstrates how to use Meerkat to monitor job postings from various sources.
+This repository also includes an example project that demonstrates how to use Meerkat to monitor job postings from various sources.
 You can find it in the [`job-monitor`](./job-monitor) directory; just keep in mind, you’ll need to implement the job fetchers yourself!
 
 ## License
